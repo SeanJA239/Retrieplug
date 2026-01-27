@@ -1,0 +1,13 @@
+/* AI Chat Pinboard - Minimal external styles */
+/* Most styling is now inline in content.js for better isolation */
+
+/* Ensure sidebar host doesn't interfere with page layout */
+#pinboard-host {
+  position: fixed !important;
+  top: 0 !important;
+  right: 0 !important;
+  width: 0 !important;
+  height: 0 !important;
+  overflow: visible !important;
+  pointer-events: none !important;
+}
