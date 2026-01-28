@@ -55,7 +55,7 @@
   if (!SITE_CONFIG) return;
 
   const STORAGE_KEY = 'pinboard_all_dialogues';
-  let allDialogues = {}; // { pathname: { title, pins: { id: {snippet, timestamp, messageIndex} } } }
+  let allDialogues = {}; // { pathname: { title, pins: { id: {snippet, timestamp, queryText} } } }
   let shadowRoot = null;
   let currentPath = window.location.pathname;
   let expandedFolders = new Set();
@@ -110,10 +110,17 @@
     return getCurrentDialogue().pins;
   }
 
-  // Find user message by index
-  function findUserMessageByIndex(index) {
+  // Find user message by matching query text
+  function findUserMessageByQuery(queryText) {
     const messages = document.querySelectorAll(SITE_CONFIG.userMessageSelector);
-    return messages[index] || null;
+    for (const msg of messages) {
+      const text = msg.textContent.replace(/\s+/g, ' ').trim();
+      // Match if the stored query is found in the message text
+      if (text.includes(queryText) || queryText.includes(text.substring(0, 100))) {
+        return msg;
+      }
+    }
+    return null;
   }
 
   // Find AI message that follows a user message
@@ -518,7 +525,7 @@
       pinsContainer.className = 'folder-pins';
 
       // Sort pins by message index
-      pins.sort((a, b) => a[1].messageIndex - b[1].messageIndex);
+      pins.sort((a, b) => a[1].timestamp - b[1].timestamp);
 
       for (const [pinId, pinData] of pins) {
         const card = document.createElement('div');
@@ -535,7 +542,7 @@
           if (e.target.classList.contains('delete-btn')) {
             deletePin(path, pinId);
           } else if (isCurrent) {
-            jumpToMessage(pinData.messageIndex);
+            jumpToMessage(pinData.queryText);
           } else {
             // Open in new tab
             window.open(window.location.origin + path, '_blank');
@@ -557,13 +564,13 @@
   function updatePinButtonStates() {
     const currentPins = getCurrentPins();
     document.querySelectorAll('[data-pinboard-idx]').forEach(el => {
-      const idx = parseInt(el.getAttribute('data-pinboard-idx'), 10);
       // Button container is now a sibling after the message
       const btnContainer = el.nextElementSibling;
       const btn = btnContainer?.querySelector('.pinboard-btn');
       if (!btn) return;
 
-      const isPinned = Object.values(currentPins).some(p => p.messageIndex === idx);
+      const queryText = el.textContent.replace(/\s+/g, ' ').trim().substring(0, 150);
+      const isPinned = Object.values(currentPins).some(p => p.queryText === queryText);
       if (isPinned) {
         btn.style.opacity = '1';
         btn.style.background = 'rgba(217,119,6,0.35)';
@@ -601,13 +608,13 @@
   }
 
   // Jump to user query - position near top of viewport
-  function jumpToMessage(messageIndex) {
-    const el = findUserMessageByIndex(messageIndex);
+  function jumpToMessage(queryText) {
+    const el = findUserMessageByQuery(queryText);
     if (!el) {
       // Remove orphan pin
       const pins = getCurrentPins();
       for (const [id, data] of Object.entries(pins)) {
-        if (data.messageIndex === messageIndex) {
+        if (data.queryText === queryText) {
           delete pins[id];
         }
       }
@@ -712,7 +719,8 @@
     `;
 
     const currentPins = getCurrentPins();
-    const isPinned = Object.values(currentPins).some(p => p.messageIndex === index);
+    const initialQueryText = messageEl.textContent.replace(/\s+/g, ' ').trim().substring(0, 150);
+    const isPinned = Object.values(currentPins).some(p => p.queryText === initialQueryText);
     if (isPinned) {
       btn.style.opacity = '1';
       btn.style.background = 'rgba(217,119,6,0.35)';
@@ -723,7 +731,8 @@
       e.stopPropagation();
 
       const pins = getCurrentPins();
-      const existingPin = Object.entries(pins).find(([_, p]) => p.messageIndex === index);
+      const currentQueryText = messageEl.textContent.replace(/\s+/g, ' ').trim().substring(0, 150);
+      const existingPin = Object.entries(pins).find(([_, p]) => p.queryText === currentQueryText);
 
       if (existingPin) {
         delete pins[existingPin[0]];
@@ -733,6 +742,9 @@
           delete allDialogues[currentPath];
         }
       } else {
+        // Store the user's query text for matching
+        const queryText = messageEl.textContent.replace(/\s+/g, ' ').trim().substring(0, 150);
+
         // Get snippet from the following AI response
         const aiMessage = findFollowingAiMessage(messageEl);
         let snippet = 'No AI response found';
@@ -743,7 +755,7 @@
         pins[`pin_${Date.now()}`] = {
           snippet,
           timestamp: Date.now(),
-          messageIndex: index
+          queryText
         };
         // Update title
         getCurrentDialogue().title = getDialogueTitle();
@@ -767,7 +779,8 @@
     const showBtn = () => btn.style.opacity = '1';
     const hideBtn = () => {
       const pins = getCurrentPins();
-      const stillPinned = Object.values(pins).some(p => p.messageIndex === index);
+      const qText = messageEl.textContent.replace(/\s+/g, ' ').trim().substring(0, 150);
+      const stillPinned = Object.values(pins).some(p => p.queryText === qText);
       if (!stillPinned) btn.style.opacity = '0';
     };
 

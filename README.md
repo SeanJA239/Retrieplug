@@ -38,6 +38,7 @@ Standard AI interfaces force you to scroll endlessly. If your thought process is
 3. Enable **Developer mode** (toggle in the top-right corner).
 4. Click **Load unpacked** and select the `Retrieplug` folder.
 5. Head over to [Claude.ai](https://claude.ai) and start anchoring!
+
 1. 下载或克隆本仓库到本地。
 2. 打开 Chrome，进入 `chrome://extensions/`。
 3. 开启右上角的 **“开发者模式”**。
