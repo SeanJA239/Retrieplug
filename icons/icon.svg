@@ -1,0 +1,24 @@
+```xml
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect width="512" height="512" rx="120" fill="#6D28D9"/>
+    
+    <defs>
+        <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" style="stop-color:#A855F7;stop-opacity:1" />
+            <stop offset="100%" style="stop-color:#3B82F6;stop-opacity:1" />
+        </linearGradient>
+    </defs>
+
+    <g transform="translate(106, 86) scale(1.2)">
+        <path d="M125 40C125 17.9086 107.091 0 85 0C62.9086 0 45 17.9086 45 40V120H125V40Z" fill="white" fill-opacity="0.2"/>
+        <path d="M25 120H145V150C145 155.523 140.523 160 135 160H35C29.4771 160 25 155.523 25 150V120Z" fill="white"/>
+        
+        <rect x="75" y="160" width="20" height="80" rx="10" fill="white"/>
+        <rect x="55" y="190" width="10" height="40" rx="5" fill="white" fill-opacity="0.6"/>
+        <rect x="105" y="190" width="10" height="40" rx="5" fill="white" fill-opacity="0.6"/>
+    </g>
+    
+    <circle cx="400" cy="120" r="20" fill="white" fill-opacity="0.8"/>
+    <circle cx="430" cy="180" r="15" fill="white" fill-opacity="0.5"/>
+    <circle cx="380" cy="240" r="10" fill="white" fill-opacity="0.3"/>
+</svg>

@@ -1,67 +1,58 @@
-# AI Chat Pinboard
+# 🧩 Retrieplug (Retrieve-Plug)
 
-A Chrome Extension that adds bookmark/pin functionality to AI chat interfaces (claude.ai).
+> **"Transforming linear AI chats into your personal knowledge tree."**
 
-## Features
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-Chrome%20|%20Edge-lightgrey.svg)](https://developer.chrome.com/docs/extensions/)
+[![Version](https://img.shields.io/badge/version-1.0.0-green.svg)]()
 
-- **📌 Pin Messages**: Hover over any AI response to reveal a pin button
-- **📋 Sidebar Navigation**: Collapsible sidebar shows all pinned messages
-- **⚡ Instant Jump**: Click any pin card to smoothly scroll to that message
-- **💾 Persistent Storage**: Pins are saved per-conversation and persist across refreshes
+Retrieplug is a productivity-focused Chrome extension designed for deep thinkers who find linear chat interfaces (like Claude or ChatGPT) restrictive. It allows you to **pin, organize, and navigate** complex AI conversations as if they were branches of a tree.
 
-## Installation
+---
 
-1. Open Chrome and navigate to `chrome://extensions/`
-2. Enable "Developer mode" (toggle in top-right)
-3. Click "Load unpacked"
-4. Select this folder (`retrieve-plug`)
-5. Navigate to [claude.ai](https://claude.ai) and start a conversation
+## 🌲 Why Retrieplug?
 
-## Usage
+Standard AI interfaces force you to scroll endlessly. If your thought process is non-linear—branching off into technical details and then returning to the main topic—you lose context. 
 
-1. **Pin a message**: Hover over any AI response and click the 📌 button
-2. **View pins**: Look at the sidebar on the right side of the page
-3. **Jump to pin**: Click any card in the sidebar to scroll to that message
-4. **Remove pin**: Click the ✕ button on any pin card, or click the pin button again
-5. **Collapse sidebar**: Click the ◀ button in the sidebar header
+**Retrieplug solves this by:**
+- **Anchoring Context:** Save "Golden Answers" that you'll need to reference later.
+- **Non-Linear Navigation:** Jump between different "branches" of your conversation via a persistent sidebar.
+- **Cognitive Ease:** Spend less time scrolling and more time thinking.
 
-## File Structure
+## ✨ Key Features
 
-```
-retrieve-plug/
-├── manifest.json    # Extension configuration
-├── content.js       # Main script (MutationObserver, storage, UI)
-├── styles.css       # Pin button styles (host page)
-├── icons/           # Extension icons (optional)
-└── README.md        # This file
-```
+- 📌 **Smart Pinning**: Hover over any AI response to instantly anchor it.
+- 🗂️ **Snippet Sidebar**: A sleek, collapsible drawer that keeps your pinned gems organized.
+- ⚡ **Instant Warp**: Click a pinned card to smoothly scroll back to the exact moment in history.
+- 💾 **Session Persistence**: Pins are stored per conversation URL—refresh the page and your "knowledge tree" remains.
+- 🎨 **Glassmorphism UI**: Designed to blend seamlessly with the modern aesthetics of Claude.ai.
 
-## Technical Details
+## 🚀 Installation
 
-- **Shadow DOM**: Sidebar uses Shadow DOM to prevent CSS conflicts
-- **MutationObserver**: Detects dynamically loaded messages
-- **chrome.storage.local**: Persists pins per conversation URL
-- **Glassmorphism UI**: Modern frosted-glass design
+1. **Download/Clone** this repository to your local machine.
+2. Open Chrome and go to `chrome://extensions/`.
+3. Enable **Developer mode** (toggle in the top-right corner).
+4. Click **Load unpacked** and select the `Retrieplug` folder.
+5. Head over to [Claude.ai](https://claude.ai) and start anchoring!
 
-## Customization
+## 🛠️ Configuration
 
-To support additional AI chat sites, modify `CONFIG` in `content.js`:
+To add support for ChatGPT or other AI platforms, simply update the `CONFIG` object in `content.js`:
 
 ```javascript
 const CONFIG = {
-  messageSelector: '[data-testid="chat-message-content"]',
-  messageContainerSelector: '.font-claude-message',
-  fallbackSelectors: ['.prose', '[class*="message"]'],
-  // Add your selectors here
+  messageSelector: '[data-testid="chat-message-content"]', // Target for ChatGPT
+  messageContainerSelector: '.font-claude-message',        // Target for Claude
+  // ...
 };
-```
 
-Then update `manifest.json` matches:
+## 🗺️ Roadmap
+- [ ] Support for multiple AI platforms (ChatGPT, Gemini).
+- [ ] Export pinned messages as Markdown files.
+- [ ] Folder/Category support for different "thought branches".
+- [ ] Search bar within the sidebar.
 
-```json
-"matches": ["https://claude.ai/*", "https://chat.openai.com/*"]
-```
+## 📄 License
 
-## License
-
-MIT
+Distributed under the Apache-2.0 License. See LICENSE for more information.
+---
