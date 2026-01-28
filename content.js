@@ -696,7 +696,7 @@
 
     const btnContainer = document.createElement('div');
     btnContainer.className = 'pinboard-btn-container';
-    btnContainer.style.cssText = 'display:flex;justify-content:center;padding:8px 0;';
+    btnContainer.style.cssText = 'display:flex;justify-content:flex-end;padding:2px 0;width:100%;';
 
     const btn = document.createElement('button');
     btn.className = 'pinboard-btn';
