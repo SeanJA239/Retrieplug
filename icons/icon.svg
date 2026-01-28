@@ -1,24 +1,23 @@
-```xml
 <svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <rect width="512" height="512" rx="120" fill="#6D28D9"/>
-    
     <defs>
-        <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" style="stop-color:#A855F7;stop-opacity:1" />
-            <stop offset="100%" style="stop-color:#3B82F6;stop-opacity:1" />
+        <linearGradient id="bg_grad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" style="stop-color:#4F46E5;"/>
+            <stop offset="100%" style="stop-color:#7C3AED;"/>
+        </linearGradient>
+        <linearGradient id="p_body_grad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" style="stop-color:#FFFFFF;"/>
+            <stop offset="100%" style="stop-color:#E0E7FF;"/>
         </linearGradient>
     </defs>
-
-    <g transform="translate(106, 86) scale(1.2)">
-        <path d="M125 40C125 17.9086 107.091 0 85 0C62.9086 0 45 17.9086 45 40V120H125V40Z" fill="white" fill-opacity="0.2"/>
-        <path d="M25 120H145V150C145 155.523 140.523 160 135 160H35C29.4771 160 25 155.523 25 150V120Z" fill="white"/>
-        
-        <rect x="75" y="160" width="20" height="80" rx="10" fill="white"/>
-        <rect x="55" y="190" width="10" height="40" rx="5" fill="white" fill-opacity="0.6"/>
-        <rect x="105" y="190" width="10" height="40" rx="5" fill="white" fill-opacity="0.6"/>
-    </g>
     
-    <circle cx="400" cy="120" r="20" fill="white" fill-opacity="0.8"/>
-    <circle cx="430" cy="180" r="15" fill="white" fill-opacity="0.5"/>
-    <circle cx="380" cy="240" r="10" fill="white" fill-opacity="0.3"/>
+    <rect width="512" height="512" rx="128" fill="url(#bg_grad)"/>
+    
+    <g transform="translate(146, 116)">
+        <path d="M0 40C0 17.9086 17.9086 0 40 0H130C179.706 0 220 40.2944 220 90C220 139.706 179.706 180 130 180H50C44.4772 180 40 184.477 40 190V280C40 296.569 26.5685 310 10 310H0V40Z" fill="url(#p_body_grad)"/>
+        
+        <path d="M110 55C129.33 55 145 70.67 145 90C145 109.33 129.33 125 110 125C90.67 125 75 109.33 75 90" stroke="#6366F1" stroke-width="16" stroke-linecap="round"/>
+        <path d="M60 80L75 95L90 80" stroke="#6366F1" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+        
+        <circle cx="30" cy="40" r="10" fill="white" fill-opacity="0.5"/>
+    </g>
 </svg>
