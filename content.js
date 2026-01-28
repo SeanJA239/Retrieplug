@@ -76,7 +76,7 @@
   // Load all dialogues from storage
   async function loadAllDialogues() {
     try {
-      const result = await chrome.storage.local.get(STORAGE_KEY);
+      const result = await chrome.storage.sync.get(STORAGE_KEY);
       allDialogues = result[STORAGE_KEY] || {};
     } catch (e) {
       console.error('Pinboard: Load failed', e);
@@ -88,7 +88,7 @@
   // Save all dialogues to storage
   async function saveAllDialogues() {
     try {
-      await chrome.storage.local.set({ [STORAGE_KEY]: allDialogues });
+      await chrome.storage.sync.set({ [STORAGE_KEY]: allDialogues });
     } catch (e) {
       console.error('Pinboard: Save failed', e);
     }
