@@ -1,5 +1,5 @@
 // AI Chat Pinboard - Content Script
-// Multi-dialogue pin management with folder structure
+// Pin user queries, display AI answer snippets in sidebar
 
 (function() {
   'use strict';
@@ -7,7 +7,8 @@
   // Site-specific configurations
   const SITE_CONFIGS = {
     'claude.ai': {
-      messageSelector: '[data-testid="chat-message-content"]',
+      userMessageSelector: '[data-testid="user-message"]',
+      aiMessageSelector: '[data-testid="chat-message-content"]',
       contentSelector: '.font-claude-message',
       excludeSelectors: [
         '[class*="thinking"]',
@@ -20,19 +21,22 @@
       titleSelector: '[data-testid="conversation-title"], .font-tiempos'
     },
     'gemini.google.com': {
-      messageSelector: 'model-response',
+      userMessageSelector: 'user-query',
+      aiMessageSelector: 'model-response',
       contentSelector: '.model-response-text',
       excludeSelectors: [],
       titleSelector: '.conversation-title'
     },
     'chatgpt.com': {
-      messageSelector: '[data-message-author-role="assistant"]',
+      userMessageSelector: '[data-message-author-role="user"]',
+      aiMessageSelector: '[data-message-author-role="assistant"]',
       contentSelector: '.markdown',
       excludeSelectors: [],
       titleSelector: 'nav [class*="active"]'
     },
     'chat.openai.com': {
-      messageSelector: '[data-message-author-role="assistant"]',
+      userMessageSelector: '[data-message-author-role="user"]',
+      aiMessageSelector: '[data-message-author-role="assistant"]',
       contentSelector: '.markdown',
       excludeSelectors: [],
       titleSelector: 'nav [class*="active"]'
@@ -106,10 +110,37 @@
     return getCurrentDialogue().pins;
   }
 
-  // Find message by index
-  function findMessageByIndex(index) {
-    const messages = document.querySelectorAll(SITE_CONFIG.messageSelector);
+  // Find user message by index
+  function findUserMessageByIndex(index) {
+    const messages = document.querySelectorAll(SITE_CONFIG.userMessageSelector);
     return messages[index] || null;
+  }
+
+  // Find AI message that follows a user message
+  function findFollowingAiMessage(userMessageEl) {
+    const aiMessages = document.querySelectorAll(SITE_CONFIG.aiMessageSelector);
+    const userMessages = document.querySelectorAll(SITE_CONFIG.userMessageSelector);
+
+    // Find the index of this user message
+    let userIndex = -1;
+    userMessages.forEach((el, idx) => {
+      if (el === userMessageEl) userIndex = idx;
+    });
+
+    if (userIndex === -1) return null;
+
+    // Find AI messages that come after this user message in DOM order
+    const userRect = userMessageEl.getBoundingClientRect();
+    for (const aiMsg of aiMessages) {
+      const aiRect = aiMsg.getBoundingClientRect();
+      // AI message should be below user message
+      if (aiRect.top > userRect.top) {
+        return aiMsg;
+      }
+    }
+
+    // Fallback: return the AI message at same index
+    return aiMessages[userIndex] || null;
   }
 
   // Extract clean content
@@ -440,7 +471,7 @@
       foldersEl.innerHTML = `
         <div class="empty">
           No pins yet<br>
-          Hover over AI messages and click 📌
+          Hover over your queries and click 📌
         </div>
       `;
       return;
@@ -527,7 +558,9 @@
     const currentPins = getCurrentPins();
     document.querySelectorAll('[data-pinboard-idx]').forEach(el => {
       const idx = parseInt(el.getAttribute('data-pinboard-idx'), 10);
-      const btn = el.querySelector('.pinboard-btn');
+      // Button container is now a sibling after the message
+      const btnContainer = el.nextElementSibling;
+      const btn = btnContainer?.querySelector('.pinboard-btn');
       if (!btn) return;
 
       const isPinned = Object.values(currentPins).some(p => p.messageIndex === idx);
@@ -567,9 +600,9 @@
     }
   }
 
-  // Jump to message - position START of answer at middle of viewport
+  // Jump to user query - position near top of viewport
   function jumpToMessage(messageIndex) {
-    const el = findMessageByIndex(messageIndex);
+    const el = findUserMessageByIndex(messageIndex);
     if (!el) {
       // Remove orphan pin
       const pins = getCurrentPins();
@@ -583,31 +616,76 @@
       return;
     }
 
-    // Step 1: Scroll element to top of viewport
+    // Scroll element to top of viewport
     el.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
-    // Step 2: After scroll completes, adjust to move element to middle
-    setTimeout(() => {
-      const viewportMiddle = window.innerHeight / 2;
-      // Find scrollable container (claude.ai uses a custom container)
-      const scrollContainer = el.closest('[class*="overflow-y"], [class*="scroll"]')
-        || document.querySelector('main')
-        || document.documentElement;
+    // Create integrated highlight frame around both query and answer
+    const aiMessage = findFollowingAiMessage(el);
 
-      if (scrollContainer && scrollContainer.scrollBy) {
-        scrollContainer.scrollBy({ top: -viewportMiddle + 50, behavior: 'smooth' });
-      } else {
-        window.scrollBy({ top: -viewportMiddle + 50, behavior: 'smooth' });
+    // Calculate bounding box that covers both elements
+    const queryRect = el.getBoundingClientRect();
+    let top = queryRect.top;
+    let bottom = queryRect.bottom;
+    let left = queryRect.left;
+    let right = queryRect.right;
+
+    if (aiMessage) {
+      const aiRect = aiMessage.getBoundingClientRect();
+      top = Math.min(top, aiRect.top);
+      bottom = Math.max(bottom, aiRect.bottom);
+      left = Math.min(left, aiRect.left);
+      right = Math.max(right, aiRect.right);
+    }
+
+    // Create overlay frame
+    const overlay = document.createElement('div');
+    overlay.className = 'pinboard-highlight-overlay';
+    overlay.style.cssText = `
+      position: fixed;
+      top: ${top - 8}px;
+      left: ${left - 8}px;
+      width: ${right - left + 16}px;
+      height: ${bottom - top + 16}px;
+      border: 2px solid #d97706;
+      border-radius: 12px;
+      pointer-events: none;
+      z-index: 10000;
+      box-shadow: 0 0 20px rgba(217, 119, 6, 0.3);
+      transition: opacity 0.3s;
+    `;
+    document.body.appendChild(overlay);
+
+    // Update overlay position on scroll
+    const updatePosition = () => {
+      const newQueryRect = el.getBoundingClientRect();
+      let newTop = newQueryRect.top;
+      let newBottom = newQueryRect.bottom;
+      let newLeft = newQueryRect.left;
+      let newRight = newQueryRect.right;
+
+      if (aiMessage) {
+        const newAiRect = aiMessage.getBoundingClientRect();
+        newTop = Math.min(newTop, newAiRect.top);
+        newBottom = Math.max(newBottom, newAiRect.bottom);
+        newLeft = Math.min(newLeft, newAiRect.left);
+        newRight = Math.max(newRight, newAiRect.right);
       }
-    }, 500);
 
-    // Highlight the pinned answer
-    el.style.outline = '2px solid #d97706';
-    el.style.outlineOffset = '4px';
-    el.style.transition = 'outline 0.3s';
+      overlay.style.top = `${newTop - 8}px`;
+      overlay.style.left = `${newLeft - 8}px`;
+      overlay.style.width = `${newRight - newLeft + 16}px`;
+      overlay.style.height = `${newBottom - newTop + 16}px`;
+    };
 
+    window.addEventListener('scroll', updatePosition, true);
+
+    // Remove overlay after delay
     setTimeout(() => {
-      el.style.outline = 'none';
+      overlay.style.opacity = '0';
+      setTimeout(() => {
+        overlay.remove();
+        window.removeEventListener('scroll', updatePosition, true);
+      }, 300);
     }, 2500);
   }
 
@@ -617,17 +695,18 @@
     messageEl.setAttribute('data-pinboard-idx', index);
 
     const btnContainer = document.createElement('div');
-    btnContainer.style.cssText = 'position:absolute;top:8px;right:8px;z-index:1000;';
+    btnContainer.className = 'pinboard-btn-container';
+    btnContainer.style.cssText = 'display:flex;justify-content:center;padding:8px 0;';
 
     const btn = document.createElement('button');
     btn.className = 'pinboard-btn';
     btn.innerHTML = '📌';
-    btn.title = 'Pin this message';
+    btn.title = 'Pin this query';
     btn.style.cssText = `
-      width: 30px; height: 30px; padding: 0;
+      width: 28px; height: 28px; padding: 0;
       background: rgba(30,30,35,0.85);
       border: 1px solid rgba(255,255,255,0.15);
-      border-radius: 6px; cursor: pointer; font-size: 14px;
+      border-radius: 6px; cursor: pointer; font-size: 13px;
       opacity: 0; transition: opacity 0.15s, transform 0.15s, background 0.15s;
       display: flex; align-items: center; justify-content: center;
     `;
@@ -654,8 +733,13 @@
           delete allDialogues[currentPath];
         }
       } else {
-        const text = extractCleanContent(messageEl);
-        const snippet = text.substring(0, 50) + (text.length > 50 ? '...' : '');
+        // Get snippet from the following AI response
+        const aiMessage = findFollowingAiMessage(messageEl);
+        let snippet = 'No AI response found';
+        if (aiMessage) {
+          const text = extractCleanContent(aiMessage);
+          snippet = text.substring(0, 50) + (text.length > 50 ? '...' : '');
+        }
         pins[`pin_${Date.now()}`] = {
           snippet,
           timestamp: Date.now(),
@@ -676,22 +760,27 @@
 
     btnContainer.appendChild(btn);
 
-    const computed = window.getComputedStyle(messageEl);
-    if (computed.position === 'static') messageEl.style.position = 'relative';
-    messageEl.appendChild(btnContainer);
+    // Insert button container after the user message (between query and answer)
+    messageEl.parentNode.insertBefore(btnContainer, messageEl.nextSibling);
 
-    messageEl.addEventListener('mouseenter', () => btn.style.opacity = '1');
-    messageEl.addEventListener('mouseleave', () => {
+    // Show button on hover of either the message or the button container area
+    const showBtn = () => btn.style.opacity = '1';
+    const hideBtn = () => {
       const pins = getCurrentPins();
       const stillPinned = Object.values(pins).some(p => p.messageIndex === index);
       if (!stillPinned) btn.style.opacity = '0';
-    });
+    };
+
+    messageEl.addEventListener('mouseenter', showBtn);
+    messageEl.addEventListener('mouseleave', hideBtn);
+    btnContainer.addEventListener('mouseenter', showBtn);
+    btnContainer.addEventListener('mouseleave', hideBtn);
   }
 
-  // Process messages
+  // Process user messages to add pin buttons
   function processMessages() {
     try {
-      const messages = document.querySelectorAll(SITE_CONFIG.messageSelector);
+      const messages = document.querySelectorAll(SITE_CONFIG.userMessageSelector);
       messages.forEach((msg, idx) => addPinButton(msg, idx));
     } catch (e) {
       console.error('Pinboard: Process error', e);
