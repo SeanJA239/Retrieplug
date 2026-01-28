@@ -45,7 +45,7 @@ const CONFIG = {
   messageContainerSelector: '.font-claude-message',        // Target for Claude
   // ...
 };
-
+```
 ## 🗺️ Roadmap
 - [ ] Support for multiple AI platforms (ChatGPT, Gemini).
 - [ ] Export pinned messages as Markdown files.
