@@ -73,10 +73,27 @@
     return parts[parts.length - 1]?.substring(0, 12) || 'Untitled';
   }
 
+  // Storage helper - try sync first, fallback to local
+  let useLocalStorage = false;
+
+  async function getStorage() {
+    if (useLocalStorage) return chrome.storage.local;
+    try {
+      // Test if sync is available
+      await chrome.storage.sync.get(null);
+      return chrome.storage.sync;
+    } catch (e) {
+      console.log('Pinboard: Sync unavailable, using local storage');
+      useLocalStorage = true;
+      return chrome.storage.local;
+    }
+  }
+
   // Load all dialogues from storage
   async function loadAllDialogues() {
     try {
-      const result = await chrome.storage.sync.get(STORAGE_KEY);
+      const storage = await getStorage();
+      const result = await storage.get(STORAGE_KEY);
       allDialogues = result[STORAGE_KEY] || {};
     } catch (e) {
       console.error('Pinboard: Load failed', e);
@@ -88,9 +105,17 @@
   // Save all dialogues to storage
   async function saveAllDialogues() {
     try {
-      await chrome.storage.sync.set({ [STORAGE_KEY]: allDialogues });
+      const storage = await getStorage();
+      await storage.set({ [STORAGE_KEY]: allDialogues });
     } catch (e) {
-      console.error('Pinboard: Save failed', e);
+      // If sync fails (quota exceeded), fallback to local
+      if (!useLocalStorage) {
+        console.log('Pinboard: Sync save failed, falling back to local');
+        useLocalStorage = true;
+        await chrome.storage.local.set({ [STORAGE_KEY]: allDialogues });
+      } else {
+        console.error('Pinboard: Save failed', e);
+      }
     }
   }
 
@@ -420,6 +445,30 @@
           border-top: 1px solid rgba(255,255,255,0.06);
           text-align: center;
         }
+
+        .footer-actions {
+          display: flex;
+          gap: 8px;
+          padding: 10px 12px;
+          border-top: 1px solid rgba(255,255,255,0.06);
+        }
+
+        .footer-btn {
+          flex: 1;
+          background: rgba(255,255,255,0.06);
+          border: 1px solid rgba(255,255,255,0.1);
+          color: #999;
+          font-size: 11px;
+          padding: 6px 10px;
+          border-radius: 6px;
+          cursor: pointer;
+          transition: all 0.15s;
+        }
+
+        .footer-btn:hover {
+          background: rgba(255,255,255,0.1);
+          color: #fff;
+        }
       </style>
 
       <div class="toggle-tab" id="toggle">
@@ -434,6 +483,11 @@
         </div>
         <div class="folders-list" id="folders"></div>
         <div class="nav-hint">Pins from other chats open in a new tab</div>
+        <div class="footer-actions">
+          <button class="footer-btn" id="export-btn">📤 Export</button>
+          <button class="footer-btn" id="import-btn">📥 Import</button>
+        </div>
+        <input type="file" id="import-file" accept=".json" style="display:none;">
       </div>
     `;
 
@@ -446,6 +500,56 @@
 
     shadowRoot.getElementById('close').addEventListener('click', () => {
       shadowRoot.getElementById('sidebar').classList.remove('open');
+    });
+
+    // Export pins to JSON file
+    shadowRoot.getElementById('export-btn').addEventListener('click', () => {
+      const dataStr = JSON.stringify(allDialogues, null, 2);
+      const blob = new Blob([dataStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `pinboard-export-${new Date().toISOString().slice(0,10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    // Import pins from JSON file
+    const importFile = shadowRoot.getElementById('import-file');
+    shadowRoot.getElementById('import-btn').addEventListener('click', () => {
+      importFile.click();
+    });
+
+    importFile.addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      try {
+        const text = await file.text();
+        const imported = JSON.parse(text);
+
+        // Merge imported data with existing
+        for (const [path, dialogue] of Object.entries(imported)) {
+          if (!allDialogues[path]) {
+            allDialogues[path] = dialogue;
+          } else {
+            // Merge pins
+            allDialogues[path].pins = {
+              ...allDialogues[path].pins,
+              ...dialogue.pins
+            };
+          }
+        }
+
+        await saveAllDialogues();
+        renderSidebar();
+        alert('Pins imported successfully!');
+      } catch (err) {
+        alert('Failed to import: ' + err.message);
+      }
+
+      // Reset file input
+      importFile.value = '';
     });
   }
 
