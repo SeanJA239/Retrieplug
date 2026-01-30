@@ -210,7 +210,7 @@
           border: 1px solid rgba(255,255,255,0.1);
           border-right: none;
           border-radius: 12px 0 0 12px;
-          box-shadow: -4px 0 30px rgba(0,0,0,0.5);
+          box-shadow: none;
           display: flex;
           flex-direction: column;
           font-family: system-ui, -apple-system, sans-serif;
@@ -218,7 +218,7 @@
           pointer-events: auto;
         }
 
-        .sidebar.open { transform: translateY(-50%) translateX(0); }
+        .sidebar.open { transform: translateY(-50%) translateX(0); box-shadow: -4px 0 30px rgba(0,0,0,0.5); }
 
         .toggle-tab {
           position: fixed;
