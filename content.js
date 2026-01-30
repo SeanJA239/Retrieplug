@@ -648,8 +648,9 @@
           } else if (isCurrent) {
             jumpToMessage(pinData.queryText);
           } else {
-            // Open in new tab
-            window.open(window.location.origin + path, '_blank');
+            // Open in new tab with hash to auto-scroll
+            const hash = encodeURIComponent(pinData.queryText);
+            window.open(window.location.origin + path + '#pinboard=' + hash, '_blank');
           }
         });
 
@@ -942,6 +943,28 @@
     return `${Math.floor(sec / 86400)}d ago`;
   }
 
+  // Check for pinboard hash and scroll to pinned query
+  function checkHashAndScroll() {
+    const hash = window.location.hash;
+    if (hash.startsWith('#pinboard=')) {
+      const queryText = decodeURIComponent(hash.substring('#pinboard='.length));
+      // Retry a few times as messages may still be loading
+      let attempts = 0;
+      const tryScroll = () => {
+        const el = findUserMessageByQuery(queryText);
+        if (el) {
+          jumpToMessage(queryText);
+          // Clean up hash
+          history.replaceState(null, '', window.location.pathname + window.location.search);
+        } else if (attempts < 10) {
+          attempts++;
+          setTimeout(tryScroll, 500);
+        }
+      };
+      tryScroll();
+    }
+  }
+
   // Initialize
   async function init() {
     createSidebar();
@@ -951,6 +974,7 @@
     setTimeout(() => {
       processMessages();
       setupObserver();
+      checkHashAndScroll();
     }, 800);
 
     console.log('Pinboard: Ready with multi-dialogue support');
