@@ -40,6 +40,20 @@
       contentSelector: '.markdown',
       excludeSelectors: [],
       titleSelector: 'nav [class*="active"]'
+    },
+    'grok.com': {
+      userMessageSelector: '.items-end .message-bubble',
+      aiMessageSelector: 'div[id^="response-"] .message-bubble',
+      contentSelector: '.markdown',
+      excludeSelectors: [],
+      titleSelector: ''
+    },
+    'doubao.com': {
+      userMessageSelector: 'div[data-testid="send_message"]',
+      aiMessageSelector: 'div[data-testid="receive_message"]',
+      contentSelector: 'div[data-testid="message_text_content"]',
+      excludeSelectors: [],
+      titleSelector: ''
     }
   };
 

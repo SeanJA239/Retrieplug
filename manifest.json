@@ -8,7 +8,9 @@
     "https://claude.ai/*",
     "https://gemini.google.com/*",
     "https://chatgpt.com/*",
-    "https://chat.openai.com/*"
+    "https://chat.openai.com/*",
+    "https://grok.com/*",
+    "https://www.doubao.com/*"
   ],
   "content_scripts": [
     {
@@ -16,7 +18,9 @@
         "https://claude.ai/*",
         "https://gemini.google.com/*",
         "https://chatgpt.com/*",
-        "https://chat.openai.com/*"
+        "https://chat.openai.com/*",
+        "https://grok.com/*",
+        "https://www.doubao.com/*"
       ],
       "js": ["content.js"],
       "css": ["styles.css"],
