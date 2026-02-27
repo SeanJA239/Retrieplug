@@ -110,8 +110,10 @@
     }
   };
 
-  let currentLang = localStorage.getItem('pinboard_lang') || 'zh';
-  let currentTheme = localStorage.getItem('pinboard_theme') || 'dark';
+  let currentLang = localStorage.getItem('pinboard_lang') || 'en';
+  // Theme: respect user override in localStorage, otherwise follow system preference
+  let currentTheme = localStorage.getItem('pinboard_theme') ||
+    (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
 
   function t(key) { return LANG[currentLang][key] || key; }
 
@@ -349,6 +351,26 @@
 
         .title { font-size: 14px; font-weight: 600; color: var(--text-color); }
 
+        .header-actions {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+        }
+
+        .hamburger-btn {
+          background: none;
+          border: none;
+          color: var(--text-muted);
+          cursor: pointer;
+          font-size: 18px;
+          padding: 4px 8px;
+          border-radius: 4px;
+          line-height: 1;
+          transition: all 0.15s;
+        }
+        .hamburger-btn:hover { background: rgba(255,255,255,0.1); color: var(--text-color); }
+        .hamburger-btn.active { color: #d97706; }
+
         .close-btn {
           background: none;
           border: none;
@@ -548,6 +570,18 @@
           color: #fff;
         }
 
+        /* ===== Settings Panel (collapsible) ===== */
+        .settings-panel {
+          max-height: 0;
+          overflow: hidden;
+          transition: max-height 0.3s ease, opacity 0.25s ease;
+          opacity: 0;
+        }
+        .settings-panel.open {
+          max-height: 500px;
+          opacity: 1;
+        }
+
         /* ===== Light Theme Element Overrides ===== */
         #pinboard-container.light-theme .toggle-tab:hover {
           background: rgba(230, 230, 235, 0.98);
@@ -558,6 +592,7 @@
         #pinboard-container.light-theme .header {
           border-bottom-color: var(--border-color);
         }
+        #pinboard-container.light-theme .hamburger-btn:hover { background: rgba(0,0,0,0.08); color: var(--text-color); }
         #pinboard-container.light-theme .close-btn { color: #999; }
         #pinboard-container.light-theme .close-btn:hover { background: rgba(0,0,0,0.08); color: #000; }
         #pinboard-container.light-theme .folder-header:hover { background: var(--hover-bg); }
@@ -614,9 +649,38 @@
         }
         #pinboard-container.light-theme .feature-section { border-top-color: var(--border-color); }
 
+        .clipboard-row {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .clipboard-num-input {
+          width: 50px;
+          padding: 6px 8px;
+          font-size: 12px;
+          border: 1px solid var(--border-color);
+          border-radius: 6px;
+          background: var(--card-bg);
+          color: var(--text-color);
+          text-align: center;
+          outline: none;
+          transition: border-color 0.15s;
+          flex-shrink: 0;
+        }
+        .clipboard-num-input:focus {
+          border-color: #d97706;
+        }
+        .clipboard-num-input::-webkit-inner-spin-button,
+        .clipboard-num-input::-webkit-outer-spin-button {
+          opacity: 1;
+        }
+
         .feature-btn {
           display: block;
           width: 100%;
+          flex: 1;
+          min-width: 0;
           background: rgba(59,130,246,0.12);
           border: 1px solid rgba(59,130,246,0.25);
           color: #60a5fa;
@@ -684,35 +748,44 @@
 
         <div class="sidebar" id="sidebar">
           <div class="header">
-            <span class="title" data-i18n="title">📌 钉板</span>
-            <button class="close-btn" id="close">×</button>
+            <span class="title" data-i18n="title">📌 Pinboard</span>
+            <div class="header-actions">
+              <button class="hamburger-btn" id="hamburger" title="Settings">☰</button>
+              <button class="close-btn" id="close">×</button>
+            </div>
           </div>
           <div class="folders-list" id="folders"></div>
-          <div class="nav-hint" data-i18n="navHint">其他对话的钉子将在新标签页中打开</div>
-          <div class="footer-actions">
-            <button class="footer-btn" id="export-btn" data-i18n="export">📤 导出</button>
-            <button class="footer-btn" id="import-btn" data-i18n="import">📥 导入</button>
-          </div>
-          <input type="file" id="import-file" accept=".json" style="display:none;">
+          <div class="nav-hint" data-i18n="navHint">Pins from other chats open in a new tab</div>
 
-          <div class="settings-bar">
-            <button class="settings-btn" id="lang-btn" data-i18n="langBtn">中 / EN</button>
-            <button class="settings-btn" id="theme-btn" data-i18n="themeBtn">🌓 主题</button>
-          </div>
-
-          <div class="feature-section" id="feature3">
-            <button class="feature-btn" id="clipboard-btn" data-i18n="feature3Btn">📋 解析剪切板文件 (Ctrl+1)</button>
-            <span class="feature-hint" id="clipboard-hint" data-i18n="feature3Hint">剪切板中无文件</span>
-          </div>
-
-          <div class="feature-section" id="feature4">
-            <span class="feature-label" data-i18n="formulaLabel">公式复制格式：</span>
-            <div class="radio-group">
-              <label class="radio-label"><input type="radio" name="formula-format" value="latex" checked> <span data-i18n="latexRadio">LaTeX</span></label>
-              <label class="radio-label"><input type="radio" name="formula-format" value="mathml"> <span data-i18n="mathmlRadio">MathML</span></label>
+          <div class="settings-panel" id="settings-panel">
+            <div class="footer-actions">
+              <button class="footer-btn" id="export-btn" data-i18n="export">📤 Export</button>
+              <button class="footer-btn" id="import-btn" data-i18n="import">📥 Import</button>
             </div>
-            <div class="checkbox-row">
-              <label class="checkbox-label"><input type="checkbox" id="code-block-check"> <span data-i18n="codeBlockCheck">独立代码块行</span></label>
+            <input type="file" id="import-file" accept=".json" style="display:none;">
+
+            <div class="settings-bar">
+              <button class="settings-btn" id="lang-btn" data-i18n="langBtn">中 / EN</button>
+              <button class="settings-btn" id="theme-btn" data-i18n="themeBtn">🌓 Theme</button>
+            </div>
+
+            <div class="feature-section" id="feature3">
+              <div class="clipboard-row">
+                <input type="number" id="clipboard-history-num" class="clipboard-num-input" min="1" value="1" title="Clipboard history index">
+                <button class="feature-btn" id="clipboard-btn" data-i18n="feature3Btn">📋 Parse Clipboard File (Ctrl+1)</button>
+              </div>
+              <span class="feature-hint" id="clipboard-hint" data-i18n="feature3Hint">No file in clipboard</span>
+            </div>
+
+            <div class="feature-section" id="feature4">
+              <span class="feature-label" data-i18n="formulaLabel">Formula copy format:</span>
+              <div class="radio-group">
+                <label class="radio-label"><input type="radio" name="formula-format" value="latex" checked> <span data-i18n="latexRadio">LaTeX</span></label>
+                <label class="radio-label"><input type="radio" name="formula-format" value="mathml"> <span data-i18n="mathmlRadio">MathML</span></label>
+              </div>
+              <div class="checkbox-row">
+                <label class="checkbox-label"><input type="checkbox" id="code-block-check"> <span data-i18n="codeBlockCheck">Standalone code block line</span></label>
+              </div>
             </div>
           </div>
         </div>
@@ -728,6 +801,14 @@
 
     shadowRoot.getElementById('close').addEventListener('click', () => {
       shadowRoot.getElementById('sidebar').classList.remove('open');
+    });
+
+    // ===== Hamburger Menu Toggle =====
+    const hamburgerBtn = shadowRoot.getElementById('hamburger');
+    const settingsPanel = shadowRoot.getElementById('settings-panel');
+    hamburgerBtn.addEventListener('click', () => {
+      const isOpen = settingsPanel.classList.toggle('open');
+      hamburgerBtn.classList.toggle('active', isOpen);
     });
 
     // Export pins to JSON file
@@ -790,8 +871,29 @@
     // ===== Theme Toggle =====
     shadowRoot.getElementById('theme-btn').addEventListener('click', () => {
       currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
-      localStorage.setItem('pinboard_theme', currentTheme);
+      localStorage.setItem('pinboard_theme', currentTheme); // persist only on manual toggle
       applyTheme();
+    });
+
+    // ===== Clipboard Parse Button =====
+    shadowRoot.getElementById('clipboard-btn').addEventListener('click', () => {
+      const num = parseInt(shadowRoot.getElementById('clipboard-history-num').value, 10) || 1;
+      console.log(`Pinboard: Clipboard parse requested — history index #${num}`);
+      // TODO: implement actual clipboard file parsing logic
+    });
+
+    // ===== Ctrl + Number Keyboard Shortcut =====
+    document.addEventListener('keydown', (e) => {
+      if (e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey) {
+        const num = parseInt(e.key, 10);
+        if (num >= 1 && num <= 9) {
+          console.log(`Pinboard: Ctrl+${num} pressed — clipboard history index #${num}`);
+          // Update the number input to reflect the shortcut
+          const numInput = shadowRoot.getElementById('clipboard-history-num');
+          if (numInput) numInput.value = num;
+          // TODO: trigger clipboard parse for index num
+        }
+      }
     });
   }
 

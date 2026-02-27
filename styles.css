@@ -20,23 +20,14 @@
    ========================================================== */
 
 /*
-  Dark theme (default) variables — applied on #pinboard-container:
-    --bg-color:        rgba(18, 18, 22, 0.95)
-    --text-color:      #f5f5f5
-    --text-secondary:  #ccc
-    --text-muted:      #888
-    --border-color:    rgba(255,255,255,0.1)
-    --card-bg:         rgba(255,255,255,0.04)
-    --hover-bg:        rgba(255,255,255,0.05)
-    --btn-bg:          rgba(255,255,255,0.06)
+  Dark theme variables — applied on #pinboard-container:
+    --bg-color, --text-color, --text-secondary, --text-muted,
+    --border-color, --card-bg, --hover-bg, --btn-bg
 
-  Light theme — activated by adding .light-theme to #pinboard-container:
-    --bg-color:        rgba(245, 245, 250, 0.97)
-    --text-color:      #1a1a1a
-    --text-secondary:  #333
-    --text-muted:      #666
-    --border-color:    rgba(0,0,0,0.12)
-    --card-bg:         rgba(0,0,0,0.03)
-    --hover-bg:        rgba(0,0,0,0.05)
-    --btn-bg:          rgba(0,0,0,0.06)
+  Light theme — activated by .light-theme on #pinboard-container
+
+  Theme auto-detection:
+    On first load (no localStorage override), the extension uses
+    window.matchMedia('(prefers-color-scheme: dark)') in JS
+    to follow the OS/browser theme. Manual toggle persists to localStorage.
 */
