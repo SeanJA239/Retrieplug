@@ -11,3 +11,23 @@
   overflow: visible !important;
   pointer-events: none !important;
 }
+
+/* ==========================================================
+   Theme System — CSS Variables
+   The sidebar lives inside a Shadow DOM, so these variables
+   are defined INSIDE the shadow <style> block (content.js).
+   Below is the canonical reference for the two-tone theme.
+   ========================================================== */
+
+/*
+  Dark theme variables — applied on #pinboard-container:
+    --bg-color, --text-color, --text-secondary, --text-muted,
+    --border-color, --card-bg, --hover-bg, --btn-bg
+
+  Light theme — activated by .light-theme on #pinboard-container
+
+  Theme auto-detection:
+    On first load (no localStorage override), the extension uses
+    window.matchMedia('(prefers-color-scheme: dark)') in JS
+    to follow the OS/browser theme. Manual toggle persists to localStorage.
+*/
