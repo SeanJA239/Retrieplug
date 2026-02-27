@@ -77,12 +77,12 @@
   // ========== i18n Dictionary ==========
   const LANG = {
     zh: {
-      title: '📌 钉板',
+      title: '📌 Pinboard',
       export: '📤 导出',
       import: '📥 导入',
-      navHint: '其他对话的钉子将在新标签页中打开',
-      emptyTitle: '暂无钉子',
-      emptyHint: '悬停在你的提问上并点击 📌',
+      navHint: '其他对话的Pin将在新标签页中打开',
+      emptyTitle: '暂无Pin',
+      emptyHint: '悬停在你的提问上并点击',
       langBtn: '中 / EN',
       themeBtn: '🌓 主题',
       feature3Btn: '📋 解析剪切板文件',
@@ -99,7 +99,7 @@
       import: '📥 Import',
       navHint: 'Pins from other chats open in a new tab',
       emptyTitle: 'No pins yet',
-      emptyHint: 'Hover over your queries and click 📌',
+      emptyHint: 'Hover over your queries and click',
       langBtn: '中 / EN',
       themeBtn: '🌓 Theme',
       feature3Btn: '📋 Parse Clipboard File',
