@@ -85,8 +85,9 @@
       emptyHint: '悬停在你的提问上并点击 📌',
       langBtn: '中 / EN',
       themeBtn: '🌓 主题',
-      feature3Btn: '📋 解析剪切板文件 (Ctrl+1)',
+      feature3Btn: '📋 解析剪切板文件',
       feature3Hint: '剪切板中无文件',
+      shortcutToggle: '启用快捷键 (Ctrl+Shift+数字)',
       formulaLabel: '公式复制格式：',
       latexRadio: 'LaTeX',
       mathmlRadio: 'MathML',
@@ -101,8 +102,9 @@
       emptyHint: 'Hover over your queries and click 📌',
       langBtn: '中 / EN',
       themeBtn: '🌓 Theme',
-      feature3Btn: '📋 Parse Clipboard File (Ctrl+1)',
+      feature3Btn: '📋 Parse Clipboard File',
       feature3Hint: 'No file in clipboard',
+      shortcutToggle: 'Enable shortcuts (Ctrl+Shift+Num)',
       formulaLabel: 'Formula copy format:',
       latexRadio: 'LaTeX',
       mathmlRadio: 'MathML',
@@ -114,6 +116,8 @@
   // Theme: respect user override in localStorage, otherwise follow system preference
   let currentTheme = localStorage.getItem('pinboard_theme') ||
     (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+
+  let shortcutEnabled = localStorage.getItem('pinboard_shortcut_enabled') !== 'false'; // default: enabled
 
   function t(key) { return LANG[currentLang][key] || key; }
 
@@ -738,6 +742,77 @@
           margin: 0;
           cursor: pointer;
         }
+
+        /* ===== Toggle Switch ===== */
+        .toggle-switch-row {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-top: 8px;
+        }
+
+        .toggle-switch {
+          position: relative;
+          width: 34px;
+          height: 18px;
+          flex-shrink: 0;
+        }
+
+        .toggle-switch input {
+          opacity: 0;
+          width: 0;
+          height: 0;
+        }
+
+        .toggle-slider {
+          position: absolute;
+          inset: 0;
+          background: rgba(255,255,255,0.12);
+          border-radius: 9px;
+          cursor: pointer;
+          transition: background 0.2s;
+        }
+
+        .toggle-slider::before {
+          content: '';
+          position: absolute;
+          width: 14px;
+          height: 14px;
+          left: 2px;
+          bottom: 2px;
+          background: #888;
+          border-radius: 50%;
+          transition: transform 0.2s, background 0.2s;
+        }
+
+        .toggle-switch input:checked + .toggle-slider {
+          background: rgba(217,119,6,0.35);
+        }
+
+        .toggle-switch input:checked + .toggle-slider::before {
+          transform: translateX(16px);
+          background: #d97706;
+        }
+
+        #pinboard-container.light-theme .toggle-slider {
+          background: rgba(0,0,0,0.1);
+        }
+        #pinboard-container.light-theme .toggle-slider::before {
+          background: #aaa;
+        }
+        #pinboard-container.light-theme .toggle-switch input:checked + .toggle-slider {
+          background: rgba(217,119,6,0.25);
+        }
+        #pinboard-container.light-theme .toggle-switch input:checked + .toggle-slider::before {
+          background: #b45309;
+        }
+
+        .toggle-switch-label {
+          font-size: 11px;
+          color: var(--text-muted);
+          user-select: none;
+          cursor: pointer;
+        }
       </style>
 
       <div id="pinboard-container">
@@ -772,9 +847,16 @@
             <div class="feature-section" id="feature3">
               <div class="clipboard-row">
                 <input type="number" id="clipboard-history-num" class="clipboard-num-input" min="1" value="1" title="Clipboard history index">
-                <button class="feature-btn" id="clipboard-btn" data-i18n="feature3Btn">📋 Parse Clipboard File (Ctrl+1)</button>
+                <button class="feature-btn" id="clipboard-btn" data-i18n="feature3Btn">📋 Parse Clipboard File</button>
               </div>
               <span class="feature-hint" id="clipboard-hint" data-i18n="feature3Hint">No file in clipboard</span>
+              <div class="toggle-switch-row">
+                <label class="toggle-switch">
+                  <input type="checkbox" id="shortcut-toggle" checked>
+                  <span class="toggle-slider"></span>
+                </label>
+                <span class="toggle-switch-label" data-i18n="shortcutToggle">Enable shortcuts (Ctrl+Shift+Num)</span>
+              </div>
             </div>
 
             <div class="feature-section" id="feature4">
@@ -882,12 +964,23 @@
       // TODO: implement actual clipboard file parsing logic
     });
 
-    // ===== Ctrl + Number Keyboard Shortcut =====
+    // ===== Shortcut Toggle =====
+    const shortcutToggleEl = shadowRoot.getElementById('shortcut-toggle');
+    shortcutToggleEl.checked = shortcutEnabled;
+    shortcutToggleEl.addEventListener('change', () => {
+      shortcutEnabled = shortcutToggleEl.checked;
+      localStorage.setItem('pinboard_shortcut_enabled', shortcutEnabled);
+      console.log(`Pinboard: Shortcuts ${shortcutEnabled ? 'enabled' : 'disabled'}`);
+    });
+
+    // ===== Ctrl + Shift + Number Keyboard Shortcut =====
     document.addEventListener('keydown', (e) => {
-      if (e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey) {
-        const num = parseInt(e.key, 10);
+      if (!shortcutEnabled) return;
+      if (e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey) {
+        const num = parseInt(e.key, 10) || parseInt(e.code.replace('Digit', ''), 10);
         if (num >= 1 && num <= 9) {
-          console.log(`Pinboard: Ctrl+${num} pressed — clipboard history index #${num}`);
+          e.preventDefault();
+          console.log(`Pinboard: Ctrl+Shift+${num} pressed — clipboard history index #${num}`);
           // Update the number input to reflect the shortcut
           const numInput = shadowRoot.getElementById('clipboard-history-num');
           if (numInput) numInput.value = num;

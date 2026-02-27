@@ -1,14 +1,14 @@
-<h4 align="right"><a href="README_EN.md">English</a> | <strong>简体中文</strong></h4>
+<h4 align="right"><strong>English</strong> | <a href="README_CN.md">简体中文</a></h4>
 
 <p align="center">
-    <!-- 如果你有 Banner，可以直接替换下方的 img 标签： -->
-    <!-- <img src="【你的 Banner 图片链接放这里，建议尺寸 800x200】" alt="Retrieplug" width="800"/> -->
+    <!-- If you have a Banner, you can replace the img tag below: -->
+    <!-- <img src="[Your Banner Image URL here, recommended size 800x200]" alt="Retrieplug" width="800"/> -->
     <img src="icons/icon.svg" alt="Retrieplug Logo" width="138"/>
 </p>
 
 <h1 align="center">Retrieplug (Retrieve-Plugin)</h1>
 
-<p align="center"><strong>将线性的 AI 对话转变为你的个人知识树。</strong></p>
+<p align="center"><strong>Transforming linear AI chats into your personal knowledge tree.</strong></p>
 
 <div align="center">
     <a href="https://github.com/SeanJA239/Retrieplug/blob/main/LICENSE" target="_blank">
@@ -19,68 +19,71 @@
     <img alt="Stars" src="https://img.shields.io/github/stars/SeanJA239/Retrieplug?style=flat-square"></a>
 </div>
 
-## 🌲 为什么选择 Retrieplug？
+## 🌲 Why Retrieplug?
 
-标准的 AI 聊天界面强迫用户进行线性滚动。如果你的思维是非线性的（例如在深入探讨技术细节后需要返回主旨），你很容易丢失上下文。**Retrieplug** 允许你锚定重要的回答，并通过侧边栏在不同的思维“分支”间瞬间穿梭。这是一个轻量级的浏览器插件，用于高效提取网页信息、剪切板解析和公式复制，主打极简和高效。
+Standard AI interfaces force you to scroll endlessly. If your thought process is non-linear—branching off into technical details and then returning to the main topic—you lose context. **Retrieplug** allows you to anchor important answers and jump between different "branches" of your conversation via a persistent sidebar. It's a lightweight browser extension designed for efficient web information extraction, clipboard parsing, and formula copying, featuring a minimalist and highly efficient design.
 
-## 🧠 记忆存储系统
+## 🧠 Memory System
 
-我们实现了强大的双模存储系统，确保你的“知识树”始终安全且易于访问。
+We have implemented a robust dual-mode storage system to ensure your "Knowledge Tree" is always safe and accessible.
 
-### 1. 自动存储（持久化）
-插件会根据唯一的会话 URL 自动将你固定的消息同步到 `chrome.storage.local`。即使刷新页面或重启浏览器，你的锚点记录依然存在。
+### 1. Auto-Save (Persistence)
+The extension automatically syncs your pinned messages to `chrome.storage.local` based on the unique conversation URL. Even if you refresh the page or restart your browser, your pins remain intact.
 
-### 2. 手动管理
-用户拥有对记忆的完全控制权。你可以通过悬停时显示的 📌 按钮手动固定消息，或者直接在侧边栏中移除片段，存储数据会实时更新。
+### 2. Manual Control
+You have full control over the memory. Manually pin messages using the 📌 button on hover, or remove specific snippets directly from the sidebar. The storage updates in real-time.
 
-## ✨ 核心特性
+## ✨ Features
 
-- 📌 **智能固定**：鼠标悬停 AI 回答即可瞬间锚定。
-- 📋 **侧边栏索引**：美观的可折叠侧边栏，采用毛玻璃视觉设计。
-- ⚡ **瞬间穿梭**：点击卡片即可平滑滚动回原始对话位置。
-- 🎨 **极简设计**：清爽干净的界面，采用“回溯之眼”标志，象征检索与固定。
-- 🌗 **多语言与暗黑模式**：原生适配系统暗黑模式，并提供多语言无缝切换。
-- 📋 **剪切板智能解析**：即将推出智能识别并解析剪切板内容，极大提升工作效率。
-- 🧮 **公式一键提取**：即将推出轻松捕获网页上的 LaTeX 与 MathML 公式功能。
+- 📌 **Smart Pinning** — Hover over any AI response to instantly anchor it.
+- 📋 **Snippet Sidebar** — A sleek, collapsible drawer with a glassmorphism design.
+- ⚡ **Instant Warp** — Click any card in the sidebar to smoothly scroll to that message.
+- 🎨 **Minimalist Collapsible UI & System-level Adaptation** — Features a hamburger menu for an ultra-clean core interface. Defaults to English, with automatic system theme matching and manual toggles.
+- 📋 **Advanced Clipboard Routing** — Supports parsing historical clipboard content with selectable history index.
+- ⌨️ **Custom Shortcut Control** — Utilizes collision-free `Ctrl + Shift + Number` shortcuts to extract specific clipboard records. Includes a dedicated global switch to enable/disable shortcuts, giving full control back to the user.
+- 🧮 **One-Click Formula Extraction** — (Coming Soon) Easily capture LaTeX and MathML formulas from webpages.
 
-## 📸 界面预览
+## 📸 Screenshots
 
 <p align="center">
-    <img src="【你的界面截图链接放这里，建议展示暗色/亮色模式对比】" width="100%"/>
+    <img src="[Your interface screenshot URL here, recommended to show dark/light mode comparison]" width="100%"/>
 </p>
 
-## 🚀 安装与使用
+## 🚀 Installation & Usage
 
-1. **获取代码**
-   使用 Git 将项目克隆到本地，或者直接下载压缩包：
+1. **Get the Code**
+   Clone the repository to your local machine using Git, or download the ZIP file:
    ```bash
    git clone https://github.com/SeanJA239/Retrieplug.git
    ```
 
-2. **打开扩展程序管理**
-   在 Chrome、Edge 等 Chromium 内核的浏览器地址栏中输入 `chrome://extensions/`，并在页面右上角开启 **开发者模式**。
+2. **Open Extension Management**
+   Type `chrome://extensions/` into the address bar of a Chromium-based browser (Chrome, Edge, etc.) and enable **Developer mode** in the top-right corner.
 
-3. **加载扩展**
-   点击左上角的 **加载已解压的扩展程序** 按钮，选择刚才克隆下来的 `Retrieplug` 文件夹即可完成安装。刷新 AI 会话页面即可开始使用。
+3. **Load Extension**
+   Click the **Load unpacked** button in the top-left corner and select the cloned `Retrieplug` folder to complete the installation. Refresh your AI conversation page to start using it.
 
-## 🗺️ 路线图
+## 🗺️ Roadmap
 
-- [x] 持久化本地存储 (Persistent Memory Storage)
-- [x] 自动与手动记忆管理 (Auto & Manual Memory Management)
-- [x] 完成极简 UI 设计与基础架构搭建
-- [x] 支持多语言切换与暗黑模式适配
-- [ ] 核心：剪切板智能解析功能
-- [ ] 核心：LaTeX / MathML 公式一键提取功能
-- [ ] 多平台支持 (ChatGPT, Gemini, DeepSeek)
-- [ ] 将锚点导出为 Markdown 或 PDF
-- [ ] 为复杂的思维分支建立分组或文件夹
+- [x] Persistent Memory Storage (Local)
+- [x] Auto & Manual Memory Management
+- [x] Complete minimalist UI design and basic architecture
+- [x] Support multilingual switching and dark mode adaptation
+- [x] Hamburger collapsible menu & automatic system theme matching
+- [x] Clipboard history-index parsing UI
+- [x] Ctrl+Shift+Number shortcuts with global toggle
+- [ ] Core: Smart clipboard parsing function (logic)
+- [ ] Core: One-click LaTeX / MathML formula extraction
+- [ ] Multi-platform support (ChatGPT, Gemini, DeepSeek)
+- [ ] Export pins as Markdown / PDF
+- [ ] Grouping/Folders for complex thought branches
 
-## 🤝 贡献与反馈
+## 🤝 Contributing & Feedback
 
-非常欢迎大家参与到 Retrieplug 的开发中来！无论是功能的奇思妙想、UI 的优化建议，还是你发现的每一个 Bug，都可以随时提交 [Issue](https://github.com/SeanJA239/Retrieplug/issues) 或发起 Pull Request。
+We warmly welcome everyone to participate in the development of Retrieplug! Whether it's whimsical ideas for features, UI optimization suggestions, or any bugs you find, feel free to submit an [Issue](https://github.com/SeanJA239/Retrieplug/issues) or initiate a Pull Request.
 
-让我们一起为更高效的网页体验添砖加瓦！❤️
+Let's work together to build a more efficient web experience! ❤️
 
-## 📄 开源协议
+## 📄 License
 
-本项目采用 **Apache-2.0 许可证** 开源。详情请参阅 [LICENSE](./LICENSE) 文件。
+This project is open-sourced under the **Apache-2.0 License**. Please see the [LICENSE](./LICENSE) file for more details.
