@@ -283,9 +283,9 @@
 
         .sidebar {
           position: fixed;
-          top: 50%;
+          top: 12.5vh;
           right: 0;
-          transform: translateY(-50%) translateX(100%);
+          transform: translateX(100%);
           width: 300px;
           max-height: 75vh;
           background: var(--bg-color);
@@ -302,7 +302,7 @@
           pointer-events: auto;
         }
 
-        .sidebar.open { transform: translateY(-50%) translateX(0); box-shadow: -4px 0 30px rgba(0,0,0,0.5); }
+        .sidebar.open { transform: translateX(0); box-shadow: -4px 0 30px rgba(0,0,0,0.5); }
 
         .toggle-tab {
           position: fixed;
@@ -354,26 +354,6 @@
         }
 
         .title { font-size: 14px; font-weight: 600; color: var(--text-color); }
-
-        .header-actions {
-          display: flex;
-          align-items: center;
-          gap: 4px;
-        }
-
-        .hamburger-btn {
-          background: none;
-          border: none;
-          color: var(--text-muted);
-          cursor: pointer;
-          font-size: 18px;
-          padding: 4px 8px;
-          border-radius: 4px;
-          line-height: 1;
-          transition: all 0.15s;
-        }
-        .hamburger-btn:hover { background: rgba(255,255,255,0.1); color: var(--text-color); }
-        .hamburger-btn.active { color: #d97706; }
 
         .close-btn {
           background: none;
@@ -574,16 +554,43 @@
           color: #fff;
         }
 
-        /* ===== Settings Panel (collapsible) ===== */
+        /* ===== Expand Trigger & Settings Panel (top-anchored dropdown) ===== */
+        .expand-trigger {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 8px;
+          border: none;
+          border-top: 1px solid rgba(255,255,255,0.06);
+          background: none;
+          color: var(--text-muted);
+          cursor: pointer;
+          font-size: 14px;
+          transition: all 0.2s;
+          width: 100%;
+          flex-shrink: 0;
+        }
+        .expand-trigger:hover {
+          background: var(--hover-bg);
+          color: var(--text-color);
+        }
+        .expand-trigger.active { color: #d97706; }
+
+        .expand-icon {
+          display: inline-block;
+          transition: transform 0.3s ease;
+        }
+        .expand-trigger.active .expand-icon {
+          transform: rotate(180deg);
+        }
+
         .settings-panel {
           max-height: 0;
           overflow: hidden;
-          transition: max-height 0.3s ease, opacity 0.25s ease;
-          opacity: 0;
+          transition: max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1);
         }
         .settings-panel.open {
           max-height: 500px;
-          opacity: 1;
         }
 
         /* ===== Light Theme Element Overrides ===== */
@@ -596,7 +603,7 @@
         #pinboard-container.light-theme .header {
           border-bottom-color: var(--border-color);
         }
-        #pinboard-container.light-theme .hamburger-btn:hover { background: rgba(0,0,0,0.08); color: var(--text-color); }
+        #pinboard-container.light-theme .expand-trigger { border-top-color: var(--border-color); }
         #pinboard-container.light-theme .close-btn { color: #999; }
         #pinboard-container.light-theme .close-btn:hover { background: rgba(0,0,0,0.08); color: #000; }
         #pinboard-container.light-theme .folder-header:hover { background: var(--hover-bg); }
@@ -653,38 +660,9 @@
         }
         #pinboard-container.light-theme .feature-section { border-top-color: var(--border-color); }
 
-        .clipboard-row {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-        }
-
-        .clipboard-num-input {
-          width: 50px;
-          padding: 6px 8px;
-          font-size: 12px;
-          border: 1px solid var(--border-color);
-          border-radius: 6px;
-          background: var(--card-bg);
-          color: var(--text-color);
-          text-align: center;
-          outline: none;
-          transition: border-color 0.15s;
-          flex-shrink: 0;
-        }
-        .clipboard-num-input:focus {
-          border-color: #d97706;
-        }
-        .clipboard-num-input::-webkit-inner-spin-button,
-        .clipboard-num-input::-webkit-outer-spin-button {
-          opacity: 1;
-        }
-
         .feature-btn {
           display: block;
           width: 100%;
-          flex: 1;
-          min-width: 0;
           background: rgba(59,130,246,0.12);
           border: 1px solid rgba(59,130,246,0.25);
           color: #60a5fa;
@@ -824,13 +802,14 @@
         <div class="sidebar" id="sidebar">
           <div class="header">
             <span class="title" data-i18n="title">📌 Pinboard</span>
-            <div class="header-actions">
-              <button class="hamburger-btn" id="hamburger" title="Settings">☰</button>
-              <button class="close-btn" id="close">×</button>
-            </div>
+            <button class="close-btn" id="close">×</button>
           </div>
           <div class="folders-list" id="folders"></div>
           <div class="nav-hint" data-i18n="navHint">Pins from other chats open in a new tab</div>
+
+          <button class="expand-trigger" id="expand-trigger" title="Settings">
+            <span class="expand-icon">▼</span>
+          </button>
 
           <div class="settings-panel" id="settings-panel">
             <div class="footer-actions">
@@ -845,10 +824,7 @@
             </div>
 
             <div class="feature-section" id="feature3">
-              <div class="clipboard-row">
-                <input type="number" id="clipboard-history-num" class="clipboard-num-input" min="1" value="1" title="Clipboard history index">
-                <button class="feature-btn" id="clipboard-btn" data-i18n="feature3Btn">📋 Parse Clipboard File</button>
-              </div>
+              <span class="feature-label" data-i18n="feature3Btn">📋 Parse Clipboard File</span>
               <span class="feature-hint" id="clipboard-hint" data-i18n="feature3Hint">No file in clipboard</span>
               <div class="toggle-switch-row">
                 <label class="toggle-switch">
@@ -885,12 +861,12 @@
       shadowRoot.getElementById('sidebar').classList.remove('open');
     });
 
-    // ===== Hamburger Menu Toggle =====
-    const hamburgerBtn = shadowRoot.getElementById('hamburger');
+    // ===== Expand Trigger Toggle =====
+    const expandTrigger = shadowRoot.getElementById('expand-trigger');
     const settingsPanel = shadowRoot.getElementById('settings-panel');
-    hamburgerBtn.addEventListener('click', () => {
+    expandTrigger.addEventListener('click', () => {
       const isOpen = settingsPanel.classList.toggle('open');
-      hamburgerBtn.classList.toggle('active', isOpen);
+      expandTrigger.classList.toggle('active', isOpen);
     });
 
     // Export pins to JSON file
@@ -957,13 +933,6 @@
       applyTheme();
     });
 
-    // ===== Clipboard Parse Button =====
-    shadowRoot.getElementById('clipboard-btn').addEventListener('click', () => {
-      const num = parseInt(shadowRoot.getElementById('clipboard-history-num').value, 10) || 1;
-      console.log(`Pinboard: Clipboard parse requested — history index #${num}`);
-      // TODO: implement actual clipboard file parsing logic
-    });
-
     // ===== Shortcut Toggle =====
     const shortcutToggleEl = shadowRoot.getElementById('shortcut-toggle');
     shortcutToggleEl.checked = shortcutEnabled;
@@ -977,14 +946,16 @@
     document.addEventListener('keydown', (e) => {
       if (!shortcutEnabled) return;
       if (e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey) {
-        const num = parseInt(e.key, 10) || parseInt(e.code.replace('Digit', ''), 10);
-        if (num >= 1 && num <= 9) {
-          e.preventDefault();
-          console.log(`Pinboard: Ctrl+Shift+${num} pressed — clipboard history index #${num}`);
-          // Update the number input to reflect the shortcut
-          const numInput = shadowRoot.getElementById('clipboard-history-num');
-          if (numInput) numInput.value = num;
-          // TODO: trigger clipboard parse for index num
+        // Use e.code for reliable detection (e.key may return '!' for Shift+1, etc.)
+        const match = e.code.match(/^Digit(\d)$/);
+        if (match) {
+          const num = parseInt(match[1], 10);
+          if (num >= 1 && num <= 9) {
+            e.preventDefault();
+            const index = num - 1; // Ctrl+Shift+1 → index 0 (newest), +2 → index 1, etc.
+            console.log('读取历史剪切板，顺位：', index);
+            // TODO: trigger clipboard parse for history index
+          }
         }
       }
     });

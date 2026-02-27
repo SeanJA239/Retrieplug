@@ -1,4 +1,4 @@
-<h4 align="right"><strong>English</strong> | <a href="README_CN.md">简体中文</a></h4>
+<h4 align="right"><strong>English</strong> | <a href="README.md">简体中文</a></h4>
 
 <p align="center">
     <!-- If you have a Banner, you can replace the img tag below: -->
