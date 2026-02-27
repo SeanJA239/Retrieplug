@@ -1,7 +1,7 @@
 // AI Chat Pinboard - Content Script
 // Pin user queries, display AI answer snippets in sidebar
 
-(function() {
+(function () {
   'use strict';
 
   // Site-specific configurations
@@ -74,6 +74,47 @@
   let currentPath = window.location.pathname;
   let expandedFolders = new Set();
 
+  // ========== i18n Dictionary ==========
+  const LANG = {
+    zh: {
+      title: '📌 钉板',
+      export: '📤 导出',
+      import: '📥 导入',
+      navHint: '其他对话的钉子将在新标签页中打开',
+      emptyTitle: '暂无钉子',
+      emptyHint: '悬停在你的提问上并点击 📌',
+      langBtn: '中 / EN',
+      themeBtn: '🌓 主题',
+      feature3Btn: '📋 解析剪切板文件 (Ctrl+1)',
+      feature3Hint: '剪切板中无文件',
+      formulaLabel: '公式复制格式：',
+      latexRadio: 'LaTeX',
+      mathmlRadio: 'MathML',
+      codeBlockCheck: '独立代码块行',
+    },
+    en: {
+      title: '📌 Pinboard',
+      export: '📤 Export',
+      import: '📥 Import',
+      navHint: 'Pins from other chats open in a new tab',
+      emptyTitle: 'No pins yet',
+      emptyHint: 'Hover over your queries and click 📌',
+      langBtn: '中 / EN',
+      themeBtn: '🌓 Theme',
+      feature3Btn: '📋 Parse Clipboard File (Ctrl+1)',
+      feature3Hint: 'No file in clipboard',
+      formulaLabel: 'Formula copy format:',
+      latexRadio: 'LaTeX',
+      mathmlRadio: 'MathML',
+      codeBlockCheck: 'Standalone code block line',
+    }
+  };
+
+  let currentLang = localStorage.getItem('pinboard_lang') || 'zh';
+  let currentTheme = localStorage.getItem('pinboard_theme') || 'dark';
+
+  function t(key) { return LANG[currentLang][key] || key; }
+
   // Get current dialogue title
   function getDialogueTitle() {
     try {
@@ -81,7 +122,7 @@
       if (el && el.textContent.trim()) {
         return el.textContent.trim().substring(0, 30);
       }
-    } catch (e) {}
+    } catch (e) { }
     // Fallback: use last part of URL or "Untitled"
     const parts = currentPath.split('/').filter(Boolean);
     return parts[parts.length - 1]?.substring(0, 12) || 'Untitled';
@@ -212,6 +253,28 @@
       <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
 
+        #pinboard-container {
+          --bg-color: rgba(18, 18, 22, 0.95);
+          --text-color: #f5f5f5;
+          --text-secondary: #ccc;
+          --text-muted: #888;
+          --border-color: rgba(255,255,255,0.1);
+          --card-bg: rgba(255,255,255,0.04);
+          --hover-bg: rgba(255,255,255,0.05);
+          --btn-bg: rgba(255,255,255,0.06);
+        }
+
+        #pinboard-container.light-theme {
+          --bg-color: rgba(245, 245, 250, 0.97);
+          --text-color: #1a1a1a;
+          --text-secondary: #333;
+          --text-muted: #666;
+          --border-color: rgba(0,0,0,0.12);
+          --card-bg: rgba(0,0,0,0.03);
+          --hover-bg: rgba(0,0,0,0.05);
+          --btn-bg: rgba(0,0,0,0.06);
+        }
+
         .sidebar {
           position: fixed;
           top: 50%;
@@ -219,9 +282,10 @@
           transform: translateY(-50%) translateX(100%);
           width: 300px;
           max-height: 75vh;
-          background: rgba(18, 18, 22, 0.95);
+          background: var(--bg-color);
+          color: var(--text-color);
           backdrop-filter: blur(20px);
-          border: 1px solid rgba(255,255,255,0.1);
+          border: 1px solid var(--border-color);
           border-right: none;
           border-radius: 12px 0 0 12px;
           box-shadow: none;
@@ -241,8 +305,8 @@
           transform: translateY(-50%);
           width: 36px;
           height: 90px;
-          background: rgba(18, 18, 22, 0.95);
-          border: 1px solid rgba(255,255,255,0.12);
+          background: var(--bg-color);
+          border: 1px solid var(--border-color);
           border-right: none;
           border-radius: 10px 0 0 10px;
           cursor: pointer;
@@ -252,14 +316,14 @@
           justify-content: center;
           gap: 6px;
           font-size: 18px;
-          color: #888;
+          color: var(--text-muted);
           pointer-events: auto;
           transition: all 0.2s;
         }
 
         .toggle-tab:hover {
           background: rgba(30, 30, 40, 0.98);
-          color: #fff;
+          color: var(--text-color);
           width: 40px;
         }
 
@@ -283,7 +347,7 @@
           flex-shrink: 0;
         }
 
-        .title { font-size: 14px; font-weight: 600; color: #f5f5f5; }
+        .title { font-size: 14px; font-weight: 600; color: var(--text-color); }
 
         .close-btn {
           background: none;
@@ -483,25 +547,175 @@
           background: rgba(255,255,255,0.1);
           color: #fff;
         }
+
+        /* ===== Light Theme Element Overrides ===== */
+        #pinboard-container.light-theme .toggle-tab:hover {
+          background: rgba(230, 230, 235, 0.98);
+        }
+        #pinboard-container.light-theme .sidebar.open {
+          box-shadow: -4px 0 30px rgba(0,0,0,0.15);
+        }
+        #pinboard-container.light-theme .header {
+          border-bottom-color: var(--border-color);
+        }
+        #pinboard-container.light-theme .close-btn { color: #999; }
+        #pinboard-container.light-theme .close-btn:hover { background: rgba(0,0,0,0.08); color: #000; }
+        #pinboard-container.light-theme .folder-header:hover { background: var(--hover-bg); }
+        #pinboard-container.light-theme .folder-icon { color: #999; }
+        #pinboard-container.light-theme .folder-title { color: #444; }
+        #pinboard-container.light-theme .folder.current { background: rgba(217,119,6,0.06); border-color: rgba(217,119,6,0.15); }
+        #pinboard-container.light-theme .folder.current .folder-title { color: #b45309; }
+        #pinboard-container.light-theme .folder-count { background: rgba(0,0,0,0.06); color: #666; }
+        #pinboard-container.light-theme .folder.current .folder-count { background: rgba(217,119,6,0.15); color: #b45309; }
+        #pinboard-container.light-theme .folder-delete { color: #aaa; }
+        #pinboard-container.light-theme .pin-card { background: var(--card-bg); border-color: rgba(0,0,0,0.08); }
+        #pinboard-container.light-theme .pin-card:hover { background: rgba(217,119,6,0.08); border-color: rgba(217,119,6,0.25); }
+        #pinboard-container.light-theme .pin-snippet { color: var(--text-secondary); }
+        #pinboard-container.light-theme .pin-meta { color: var(--text-muted); }
+        #pinboard-container.light-theme .delete-btn { color: #aaa; }
+        #pinboard-container.light-theme .nav-hint { color: var(--text-muted); border-top-color: var(--border-color); }
+        #pinboard-container.light-theme .footer-actions { border-top-color: var(--border-color); }
+        #pinboard-container.light-theme .footer-btn { background: var(--btn-bg); border-color: var(--border-color); color: #666; }
+        #pinboard-container.light-theme .footer-btn:hover { background: rgba(0,0,0,0.1); color: #000; }
+        #pinboard-container.light-theme .empty { color: var(--text-muted); }
+        #pinboard-container.light-theme .folders-list::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); }
+
+        /* ===== Settings Bar ===== */
+        .settings-bar {
+          display: flex;
+          gap: 8px;
+          padding: 8px 12px;
+          border-top: 1px solid rgba(255,255,255,0.06);
+        }
+        #pinboard-container.light-theme .settings-bar { border-top-color: var(--border-color); }
+
+        .settings-btn {
+          flex: 1;
+          background: var(--btn-bg);
+          border: 1px solid var(--border-color);
+          color: var(--text-muted);
+          font-size: 11px;
+          padding: 6px 10px;
+          border-radius: 6px;
+          cursor: pointer;
+          transition: all 0.15s;
+        }
+        .settings-btn:hover {
+          background: var(--hover-bg);
+          color: var(--text-color);
+        }
+
+        /* ===== Feature Sections ===== */
+        .feature-section {
+          padding: 8px 12px;
+          border-top: 1px solid rgba(255,255,255,0.06);
+          font-size: 12px;
+          color: var(--text-secondary);
+        }
+        #pinboard-container.light-theme .feature-section { border-top-color: var(--border-color); }
+
+        .feature-btn {
+          display: block;
+          width: 100%;
+          background: rgba(59,130,246,0.12);
+          border: 1px solid rgba(59,130,246,0.25);
+          color: #60a5fa;
+          font-size: 11px;
+          padding: 7px 10px;
+          border-radius: 6px;
+          cursor: pointer;
+          transition: all 0.15s;
+          text-align: left;
+        }
+        .feature-btn:hover {
+          background: rgba(59,130,246,0.2);
+          border-color: rgba(59,130,246,0.4);
+        }
+        #pinboard-container.light-theme .feature-btn { background: rgba(59,130,246,0.08); color: #2563eb; border-color: rgba(59,130,246,0.2); }
+        #pinboard-container.light-theme .feature-btn:hover { background: rgba(59,130,246,0.15); }
+
+        .feature-hint {
+          display: block;
+          margin-top: 5px;
+          font-size: 10px;
+          color: #666;
+        }
+        #pinboard-container.light-theme .feature-hint { color: #999; }
+
+        .feature-label {
+          font-size: 12px;
+          color: var(--text-secondary);
+          margin-bottom: 6px;
+          display: block;
+        }
+
+        .radio-group {
+          display: flex;
+          align-items: center;
+          gap: 14px;
+          margin: 6px 0;
+        }
+
+        .radio-label, .checkbox-label {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          font-size: 11px;
+          color: var(--text-muted);
+          cursor: pointer;
+          user-select: none;
+        }
+
+        .checkbox-row { margin-top: 6px; }
+
+        .radio-label input[type="radio"],
+        .checkbox-label input[type="checkbox"] {
+          accent-color: #d97706;
+          margin: 0;
+          cursor: pointer;
+        }
       </style>
 
-      <div class="toggle-tab" id="toggle">
-        <span>📌</span>
-        <span class="count" id="count">0</span>
-      </div>
+      <div id="pinboard-container">
+        <div class="toggle-tab" id="toggle">
+          <span>📌</span>
+          <span class="count" id="count">0</span>
+        </div>
 
-      <div class="sidebar" id="sidebar">
-        <div class="header">
-          <span class="title">📌 Pinboard</span>
-          <button class="close-btn" id="close">×</button>
+        <div class="sidebar" id="sidebar">
+          <div class="header">
+            <span class="title" data-i18n="title">📌 钉板</span>
+            <button class="close-btn" id="close">×</button>
+          </div>
+          <div class="folders-list" id="folders"></div>
+          <div class="nav-hint" data-i18n="navHint">其他对话的钉子将在新标签页中打开</div>
+          <div class="footer-actions">
+            <button class="footer-btn" id="export-btn" data-i18n="export">📤 导出</button>
+            <button class="footer-btn" id="import-btn" data-i18n="import">📥 导入</button>
+          </div>
+          <input type="file" id="import-file" accept=".json" style="display:none;">
+
+          <div class="settings-bar">
+            <button class="settings-btn" id="lang-btn" data-i18n="langBtn">中 / EN</button>
+            <button class="settings-btn" id="theme-btn" data-i18n="themeBtn">🌓 主题</button>
+          </div>
+
+          <div class="feature-section" id="feature3">
+            <button class="feature-btn" id="clipboard-btn" data-i18n="feature3Btn">📋 解析剪切板文件 (Ctrl+1)</button>
+            <span class="feature-hint" id="clipboard-hint" data-i18n="feature3Hint">剪切板中无文件</span>
+          </div>
+
+          <div class="feature-section" id="feature4">
+            <span class="feature-label" data-i18n="formulaLabel">公式复制格式：</span>
+            <div class="radio-group">
+              <label class="radio-label"><input type="radio" name="formula-format" value="latex" checked> <span data-i18n="latexRadio">LaTeX</span></label>
+              <label class="radio-label"><input type="radio" name="formula-format" value="mathml"> <span data-i18n="mathmlRadio">MathML</span></label>
+            </div>
+            <div class="checkbox-row">
+              <label class="checkbox-label"><input type="checkbox" id="code-block-check"> <span data-i18n="codeBlockCheck">独立代码块行</span></label>
+            </div>
+          </div>
         </div>
-        <div class="folders-list" id="folders"></div>
-        <div class="nav-hint">Pins from other chats open in a new tab</div>
-        <div class="footer-actions">
-          <button class="footer-btn" id="export-btn">📤 Export</button>
-          <button class="footer-btn" id="import-btn">📥 Import</button>
-        </div>
-        <input type="file" id="import-file" accept=".json" style="display:none;">
       </div>
     `;
 
@@ -523,7 +737,7 @@
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `pinboard-export-${new Date().toISOString().slice(0,10)}.json`;
+      a.download = `pinboard-export-${new Date().toISOString().slice(0, 10)}.json`;
       a.click();
       URL.revokeObjectURL(url);
     });
@@ -565,6 +779,44 @@
       // Reset file input
       importFile.value = '';
     });
+
+    // ===== Language Toggle =====
+    shadowRoot.getElementById('lang-btn').addEventListener('click', () => {
+      currentLang = currentLang === 'zh' ? 'en' : 'zh';
+      localStorage.setItem('pinboard_lang', currentLang);
+      applyLanguage();
+    });
+
+    // ===== Theme Toggle =====
+    shadowRoot.getElementById('theme-btn').addEventListener('click', () => {
+      currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
+      localStorage.setItem('pinboard_theme', currentTheme);
+      applyTheme();
+    });
+  }
+
+  // ===== Apply Language =====
+  function applyLanguage() {
+    if (!shadowRoot) return;
+    shadowRoot.querySelectorAll('[data-i18n]').forEach(el => {
+      const key = el.getAttribute('data-i18n');
+      if (LANG[currentLang][key] !== undefined) {
+        el.textContent = LANG[currentLang][key];
+      }
+    });
+    renderSidebar(); // re-render dynamic content with current language
+  }
+
+  // ===== Apply Theme =====
+  function applyTheme() {
+    if (!shadowRoot) return;
+    const container = shadowRoot.getElementById('pinboard-container');
+    if (!container) return;
+    if (currentTheme === 'light') {
+      container.classList.add('light-theme');
+    } else {
+      container.classList.remove('light-theme');
+    }
   }
 
   // Render sidebar with folders
@@ -595,8 +847,8 @@
     if (dialoguesWithPins.length === 0) {
       foldersEl.innerHTML = `
         <div class="empty">
-          No pins yet<br>
-          Hover over your queries and click 📌
+          ${t('emptyTitle')}<br>
+          ${t('emptyHint')}
         </div>
       `;
       return;
@@ -982,8 +1234,10 @@
   // Initialize
   async function init() {
     createSidebar();
+    applyTheme();
     await loadAllDialogues();
     expandedFolders.add(currentPath);
+    applyLanguage();
 
     setTimeout(() => {
       processMessages();
