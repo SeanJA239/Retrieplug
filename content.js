@@ -283,9 +283,9 @@
 
         .sidebar {
           position: fixed;
-          top: 12.5vh;
+          top: 50%;
           right: 0;
-          transform: translateX(100%);
+          transform: translateX(100%) translateY(-50%);
           width: 300px;
           max-height: 75vh;
           background: var(--bg-color);
@@ -298,11 +298,17 @@
           display: flex;
           flex-direction: column;
           font-family: system-ui, -apple-system, sans-serif;
-          transition: transform 0.25s ease;
-          pointer-events: auto;
+          transition: transform 0.3s ease, opacity 0.3s ease;
+          opacity: 0;
+          pointer-events: none;
         }
 
-        .sidebar.open { transform: translateX(0); box-shadow: -4px 0 30px rgba(0,0,0,0.5); }
+        .sidebar.open {
+          transform: translateX(0) translateY(-50%);
+          box-shadow: -4px 0 30px rgba(0,0,0,0.5);
+          opacity: 1;
+          pointer-events: auto;
+        }
 
         .toggle-tab {
           position: fixed;
@@ -324,7 +330,13 @@
           font-size: 18px;
           color: var(--text-muted);
           pointer-events: auto;
-          transition: all 0.2s;
+          transition: all 0.2s, opacity 0.2s ease;
+          opacity: 1;
+        }
+
+        .toggle-tab.hidden {
+          opacity: 0;
+          pointer-events: none;
         }
 
         .toggle-tab:hover {
@@ -851,6 +863,7 @@
     `;
 
     shadowRoot.getElementById('toggle').addEventListener('click', () => {
+      shadowRoot.getElementById('toggle').classList.add('hidden');
       shadowRoot.getElementById('sidebar').classList.add('open');
       // Auto-expand current folder
       expandedFolders.add(currentPath);
@@ -859,6 +872,7 @@
 
     shadowRoot.getElementById('close').addEventListener('click', () => {
       shadowRoot.getElementById('sidebar').classList.remove('open');
+      shadowRoot.getElementById('toggle').classList.remove('hidden');
     });
 
     // ===== Expand Trigger Toggle =====
