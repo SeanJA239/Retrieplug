@@ -32,14 +32,14 @@
       aiMessageSelector: '[data-message-author-role="assistant"]',
       contentSelector: '.markdown',
       excludeSelectors: [],
-      titleSelector: 'nav [class*="active"]'
+      titleSelector: 'nav a[aria-current="page"], nav [aria-current="page"]'
     },
     'chat.openai.com': {
       userMessageSelector: '[data-message-author-role="user"]',
       aiMessageSelector: '[data-message-author-role="assistant"]',
       contentSelector: '.markdown',
       excludeSelectors: [],
-      titleSelector: 'nav [class*="active"]'
+      titleSelector: 'nav a[aria-current="page"], nav [aria-current="page"]'
     },
     'grok.com': {
       userMessageSelector: '.items-end .message-bubble',
@@ -69,45 +69,326 @@
   if (!SITE_CONFIG) return;
 
   const STORAGE_KEY = 'pinboard_all_dialogues';
-  let allDialogues = {}; // { pathname: { title, pins: { id: {snippet, timestamp, queryText} } } }
+  let allDialogues = {}; // { dialogueKey: { title, pins: { id: {snippet, timestamp, queryText} } } }
   let shadowRoot = null;
-  let currentPath = window.location.pathname;
+
+  const GENERIC_TITLES = new Set([
+    'chatgpt', 'chat gpt', 'claude', 'gemini', 'grok', 'doubao',
+    'google gemini', 'new chat', 'new conversation', 'conversation', 'chat', 'untitled'
+  ]);
+
+  let currentPath = getCurrentDialogueKey();
   let expandedFolders = new Set();
+
+  function getDialogueUrlPath() {
+    return window.location.pathname + window.location.search;
+  }
+
+  function getNavigablePath(dialogueKey) {
+    return dialogueKey.split('::')[0];
+  }
+
+  function normalizeKey(text) {
+    return text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').substring(0, 80);
+  }
+
+  function cleanTitle(text) {
+    return (text || '')
+      .replace(/\s+/g, ' ')
+      // Remove UI metadata suffixes injected by some chat sidebars.
+      .replace(/\s+(pinned\s+chat|pinned\s+conversation|pinned)\s*$/i, '')
+      .replace(/\s+(已固定聊天|置顶聊天|已置顶聊天)\s*$/i, '')
+      .replace(/\s*[-|]\s*(chatgpt|claude|gemini|grok|doubao).*$/i, '')
+      .replace(/\s*[·•]\s*(chatgpt|claude|gemini|grok|doubao).*$/i, '')
+      .trim();
+  }
+
+  function isLikelyId(text) {
+    if (!text) return false;
+    const value = String(text).trim();
+    return (
+      /^[a-f0-9-]{8,}$/i.test(value) ||
+      /^[a-z0-9_-]{12,}$/i.test(value)
+    );
+  }
+
+  function isMeaningfulTitle(text) {
+    const title = cleanTitle(text);
+    if (!title || title.length < 3) return false;
+    const lowered = title.toLowerCase();
+    if (GENERIC_TITLES.has(lowered)) return false;
+    if (/^(google\s+)?gemini$/i.test(title)) return false;
+    if (/^(chatgpt|chat gpt|openai chatgpt)$/i.test(title)) return false;
+    if (/^(claude|claude ai)$/i.test(title)) return false;
+    return true;
+  }
+
+  function getTitleFromSelector() {
+    if (!SITE_CONFIG.titleSelector) return '';
+    try {
+      const els = Array.from(document.querySelectorAll(SITE_CONFIG.titleSelector));
+      for (const el of els) {
+        const activeContainer = el.closest('[aria-current="page"], a[aria-current="page"]');
+        if (!activeContainer) continue;
+        const text = cleanTitle(el.textContent || '');
+        if (isMeaningfulTitle(text)) return text;
+      }
+      for (const el of els) {
+        const text = cleanTitle(el.textContent || '');
+        if (isMeaningfulTitle(text)) return text;
+      }
+    } catch (e) {}
+    return '';
+  }
+
+  function getConversationIdFromPath() {
+    const path = window.location.pathname;
+    const matched = path.match(/\/(?:c|chat|conversation|thread|app)\/([^/?#]+)/i);
+    return matched ? matched[1] : '';
+  }
+
+  function getTitleFromNavByConversationId() {
+    const conversationId = getConversationIdFromPath();
+    if (!conversationId) return '';
+
+    try {
+      const linkCandidates = document.querySelectorAll('a[href]');
+      for (const link of linkCandidates) {
+        const href = link.getAttribute('href') || '';
+        if (!href.includes(conversationId)) continue;
+
+        // Use dedicated title nodes first; avoid full link text (often includes username/status).
+        const titleNode = link.querySelector(
+          '.conversation-title, [data-testid*="conversation-title"], [class*="conversation"][class*="title"], [class*="title"]'
+        );
+        const nodeTitle = cleanTitle(titleNode?.textContent || '');
+        if (isMeaningfulTitle(nodeTitle)) return nodeTitle;
+
+        // Fallback: pick the first meaningful leaf text inside the link.
+        const walker = document.createTreeWalker(link, NodeFilter.SHOW_TEXT, null);
+        let textNode = walker.nextNode();
+        while (textNode) {
+          const leaf = cleanTitle(textNode.textContent || '');
+          if (isMeaningfulTitle(leaf)) return leaf;
+          textNode = walker.nextNode();
+        }
+      }
+    } catch (e) {}
+
+    return '';
+  }
+
+  function getTitleHint() {
+    // Most accurate: map current URL conversation id to nav item title.
+    const navMatchedTitle = getTitleFromNavByConversationId();
+    if (isMeaningfulTitle(navMatchedTitle)) return navMatchedTitle;
+
+    const selectorTitle = getTitleFromSelector();
+    if (isMeaningfulTitle(selectorTitle)) return selectorTitle;
+
+    const docTitle = cleanTitle(document.title);
+    if (isMeaningfulTitle(docTitle)) return docTitle;
+
+    return '';
+  }
+
+  function findConversationIdInState(state, depth = 0) {
+    if (!state || depth > 3) return '';
+
+    if (typeof state === 'string') {
+      return isLikelyId(state) ? state : '';
+    }
+
+    if (Array.isArray(state)) {
+      for (const item of state) {
+        const found = findConversationIdInState(item, depth + 1);
+        if (found) return found;
+      }
+      return '';
+    }
+
+    if (typeof state === 'object') {
+      const idKeyPattern = /(conversation|thread|chat|session|dialog|convo).*id|^id$/i;
+      for (const [key, value] of Object.entries(state)) {
+        if (typeof value !== 'string') continue;
+        if (!idKeyPattern.test(key)) continue;
+        if (isLikelyId(value)) return value;
+      }
+
+      for (const value of Object.values(state)) {
+        const found = findConversationIdInState(value, depth + 1);
+        if (found) return found;
+      }
+    }
+
+    return '';
+  }
+
+  function getStateConversationId() {
+    try {
+      return findConversationIdInState(history.state);
+    } catch (e) {
+      return '';
+    }
+  }
+
+  function getCurrentDialogueKey() {
+    const url = new URL(window.location.href);
+    const pathWithSearch = getDialogueUrlPath();
+
+    // If URL already has search params, keep them; this is usually enough to identify dialogue.
+    if (url.search) return pathWithSearch;
+
+    // Try extracting a conversation-like id from history state for SPA routes that keep generic paths.
+    const stateId = getStateConversationId();
+    if (stateId) return `${pathWithSearch}::id:${encodeURIComponent(stateId)}`;
+
+    // Generic path fallback: include a normalized title to avoid collisions.
+    const titleHint = getTitleHint();
+    const pathSegments = url.pathname.split('/').filter(Boolean);
+    const hasSpecificPath = pathSegments.length > 1 || isLikelyId(pathSegments[pathSegments.length - 1]);
+    if (!hasSpecificPath && titleHint) {
+      return `${pathWithSearch}::title:${normalizeKey(titleHint)}`;
+    }
+
+    return pathWithSearch;
+  }
 
   // Get current dialogue title
   function getDialogueTitle() {
-    try {
-      const el = document.querySelector(SITE_CONFIG.titleSelector);
-      if (el && el.textContent.trim()) {
-        return el.textContent.trim().substring(0, 30);
-      }
-    } catch (e) {}
+    const hint = getTitleHint();
+    if (hint) return hint.substring(0, 30);
+
     // Fallback: use last part of URL or "Untitled"
-    const parts = currentPath.split('/').filter(Boolean);
-    return parts[parts.length - 1]?.substring(0, 12) || 'Untitled';
+    const urlPath = getDialogueUrlPath().split('?')[0];
+    const parts = urlPath.split('/').filter(Boolean);
+    const last = decodeURIComponent(parts[parts.length - 1] || '');
+    if (last && !isLikelyId(last)) {
+      return cleanTitle(last).substring(0, 30);
+    }
+    if (last) {
+      return `Chat ${last.substring(0, 8)}`;
+    }
+    return 'Untitled';
   }
 
-  // Storage helper - try sync first, fallback to local
+  // Storage helper - prefer sync, fallback to local, then window.localStorage
   let useLocalStorage = false;
+  let useWebLocalStorage = false;
 
-  async function getStorage() {
-    if (useLocalStorage) return chrome.storage.local;
+  function getStorageApi() {
     try {
-      // Test if sync is available
-      await chrome.storage.sync.get(null);
-      return chrome.storage.sync;
+      return (typeof chrome !== 'undefined' && chrome.storage) ? chrome.storage : null;
     } catch (e) {
-      console.log('Pinboard: Sync unavailable, using local storage');
-      useLocalStorage = true;
-      return chrome.storage.local;
+      return null;
     }
+  }
+
+  function toPromiseStorageCall(area, method, arg) {
+    return new Promise((resolve, reject) => {
+      if (!area || typeof area[method] !== 'function') {
+        reject(new Error(`Storage method unavailable: ${method}`));
+        return;
+      }
+
+      try {
+        const fn = area[method];
+        // Callback style API
+        if (fn.length >= 2) {
+          fn.call(area, arg, (result) => {
+            try {
+              const msg = chrome?.runtime?.lastError?.message;
+              if (msg) {
+                reject(new Error(msg));
+                return;
+              }
+            } catch (err) {}
+            resolve(result);
+          });
+          return;
+        }
+
+        // Promise style API
+        const maybePromise = fn.call(area, arg);
+        if (maybePromise && typeof maybePromise.then === 'function') {
+          maybePromise.then(resolve).catch(reject);
+        } else {
+          resolve(maybePromise);
+        }
+      } catch (e) {
+        reject(e);
+      }
+    });
+  }
+
+  async function getStorageArea() {
+    if (useWebLocalStorage) return null;
+
+    const storage = getStorageApi();
+    if (!storage) {
+      useWebLocalStorage = true;
+      console.warn('Pinboard: chrome.storage unavailable, using window.localStorage');
+      return null;
+    }
+
+    if (!useLocalStorage && storage.sync) {
+      try {
+        // Probe sync availability first.
+        await toPromiseStorageCall(storage.sync, 'get', null);
+        return storage.sync;
+      } catch (e) {
+        console.log('Pinboard: Sync unavailable, using local storage');
+        useLocalStorage = true;
+      }
+    }
+
+    if (storage.local) {
+      return storage.local;
+    }
+
+    useWebLocalStorage = true;
+    console.warn('Pinboard: chrome.storage.local unavailable, using window.localStorage');
+    return null;
+  }
+
+  function webLocalGet(key) {
+    try {
+      const raw = window.localStorage.getItem(key);
+      if (!raw) return {};
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch (e) {
+      return {};
+    }
+  }
+
+  function webLocalSet(key, value) {
+    window.localStorage.setItem(key, JSON.stringify(value));
+  }
+
+  async function readStorage(key) {
+    const area = await getStorageArea();
+    if (!area) {
+      return { [key]: webLocalGet(key) };
+    }
+    const result = await toPromiseStorageCall(area, 'get', key);
+    return result || {};
+  }
+
+  async function writeStorage(payload) {
+    const area = await getStorageArea();
+    if (!area) {
+      const [key, value] = Object.entries(payload)[0] || [];
+      if (key) webLocalSet(key, value);
+      return;
+    }
+    await toPromiseStorageCall(area, 'set', payload);
   }
 
   // Load all dialogues from storage
   async function loadAllDialogues() {
     try {
-      const storage = await getStorage();
-      const result = await storage.get(STORAGE_KEY);
+      const result = await readStorage(STORAGE_KEY);
       allDialogues = result[STORAGE_KEY] || {};
     } catch (e) {
       console.error('Pinboard: Load failed', e);
@@ -119,16 +400,29 @@
   // Save all dialogues to storage
   async function saveAllDialogues() {
     try {
-      const storage = await getStorage();
-      await storage.set({ [STORAGE_KEY]: allDialogues });
+      await writeStorage({ [STORAGE_KEY]: allDialogues });
     } catch (e) {
       // If sync fails (quota exceeded), fallback to local
       if (!useLocalStorage) {
         console.log('Pinboard: Sync save failed, falling back to local');
         useLocalStorage = true;
-        await chrome.storage.local.set({ [STORAGE_KEY]: allDialogues });
+        try {
+          await writeStorage({ [STORAGE_KEY]: allDialogues });
+        } catch (retryErr) {
+          useWebLocalStorage = true;
+          try {
+            webLocalSet(STORAGE_KEY, allDialogues);
+          } catch (localErr) {
+            console.error('Pinboard: Save failed', localErr);
+          }
+        }
       } else {
-        console.error('Pinboard: Save failed', e);
+        useWebLocalStorage = true;
+        try {
+          webLocalSet(STORAGE_KEY, allDialogues);
+        } catch (localErr) {
+          console.error('Pinboard: Save failed', localErr);
+        }
       }
     }
   }
@@ -664,7 +958,7 @@
           } else {
             // Open in new tab with hash to auto-scroll
             const hash = encodeURIComponent(pinData.queryText);
-            window.open(window.location.origin + path + '#pinboard=' + hash, '_blank');
+            window.open(window.location.origin + getNavigablePath(path) + '#pinboard=' + hash, '_blank');
           }
         });
 
@@ -877,7 +1171,8 @@
           queryText
         };
         // Update title
-        getCurrentDialogue().title = getDialogueTitle();
+        const title = getDialogueTitle();
+        getCurrentDialogue().title = isMeaningfulTitle(title) ? title : queryText.substring(0, 30);
         btn.style.background = 'rgba(217,119,6,0.35)';
         btn.style.opacity = '1';
       }
@@ -921,12 +1216,31 @@
 
   // Check URL changes
   function checkUrlChange() {
-    if (window.location.pathname !== currentPath) {
-      currentPath = window.location.pathname;
+    const nextPath = getCurrentDialogueKey();
+    if (nextPath !== currentPath) {
+      currentPath = nextPath;
       expandedFolders.add(currentPath); // Auto-expand new dialogue
       renderSidebar();
-      setTimeout(processMessages, 500);
+      setTimeout(() => {
+        processMessages();
+        refreshCurrentDialogueTitle();
+      }, 500);
+    } else {
+      refreshCurrentDialogueTitle();
     }
+  }
+
+  function refreshCurrentDialogueTitle() {
+    const dialogue = allDialogues[currentPath];
+    if (!dialogue) return;
+
+    const liveTitle = getDialogueTitle();
+    if (!isMeaningfulTitle(liveTitle)) return;
+    if (dialogue.title === liveTitle) return;
+
+    dialogue.title = liveTitle;
+    saveAllDialogues();
+    renderSidebar();
   }
 
   // Setup observer
