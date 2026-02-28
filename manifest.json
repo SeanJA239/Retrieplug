@@ -3,7 +3,9 @@
   "name": "AI Chat Pinboard",
   "version": "1.0.1",
   "description": "Pin and navigate to important AI chat messages instantly",
-  "permissions": ["storage"],
+  "permissions": [
+    "storage"
+  ],
   "host_permissions": [
     "https://claude.ai/*",
     "https://gemini.google.com/*",
@@ -22,8 +24,13 @@
         "https://grok.com/*",
         "https://www.doubao.com/*"
       ],
-      "js": ["content.js"],
-      "css": ["styles.css"],
+      "js": [
+        "functions.js",
+        "content.js"
+      ],
+      "css": [
+        "styles.css"
+      ],
       "run_at": "document_idle"
     }
   ]
