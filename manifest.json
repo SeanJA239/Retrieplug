@@ -1,16 +1,14 @@
 {
   "manifest_version": 3,
   "name": "AI Chat Pinboard",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "Pin and navigate to important AI chat messages instantly",
   "permissions": ["storage"],
   "host_permissions": [
     "https://claude.ai/*",
     "https://gemini.google.com/*",
     "https://chatgpt.com/*",
-    "https://chat.openai.com/*",
-    "https://grok.com/*",
-    "https://www.doubao.com/*"
+    "https://chat.openai.com/*"
   ],
   "content_scripts": [
     {
@@ -18,9 +16,7 @@
         "https://claude.ai/*",
         "https://gemini.google.com/*",
         "https://chatgpt.com/*",
-        "https://chat.openai.com/*",
-        "https://grok.com/*",
-        "https://www.doubao.com/*"
+        "https://chat.openai.com/*"
       ],
       "js": ["content.js"],
       "css": ["styles.css"],
