@@ -1,5 +1,5 @@
 // AI Chat Pinboard - Content Script
-// Pin user queries, display AI answer snippets in sidebar
+// Multi-dialogue pin management with folder structure
 
 (function () {
   'use strict';
@@ -7,8 +7,9 @@
   // Site-specific configurations
   const SITE_CONFIGS = {
     'claude.ai': {
-      userMessageSelector: '[data-testid="user-message"]',
-      aiMessageSelector: '[data-testid="chat-message-content"]',
+      messageSelector: '[data-testid="chat-message-content"]',
+      // Tried in order if messageSelector matches nothing (Claude renames testids)
+      messageSelectorFallbacks: ['.font-claude-message', '[data-testid="assistant-message"]'],
       contentSelector: '.font-claude-message',
       excludeSelectors: [
         '[class*="thinking"]',
@@ -18,42 +19,40 @@
         '[data-testid*="thinking"]'
       ],
       // Selector to get conversation title
-      titleSelector: '[data-testid="conversation-title"], .font-tiempos'
+      titleSelector: '[data-testid="conversation-title"], .font-tiempos',
+      // Stable per-message id attribute (Claude exposes none reliably -> null = use content hash)
+      messageIdAttr: null,
+      // Scroll container for jump (null = detect at runtime via closest())
+      scrollContainerSelector: null,
+      // URL pattern that marks a settled (non-transient) conversation
+      conversationPathPattern: /\/chat\//
     },
     'gemini.google.com': {
-      userMessageSelector: 'user-query',
-      aiMessageSelector: 'model-response',
+      messageSelector: 'model-response',
       contentSelector: '.model-response-text',
       excludeSelectors: [],
-      titleSelector: '.conversation-title'
+      titleSelector: '.conversation-title',
+      messageIdAttr: null,
+      scrollContainerSelector: null,
+      conversationPathPattern: /\/app\//
     },
     'chatgpt.com': {
-      userMessageSelector: '[data-message-author-role="user"]',
-      aiMessageSelector: '[data-message-author-role="assistant"]',
+      messageSelector: '[data-message-author-role="assistant"]',
       contentSelector: '.markdown',
       excludeSelectors: [],
-      titleSelector: 'nav [class*="active"]'
+      titleSelector: 'nav [class*="active"]',
+      messageIdAttr: 'data-message-id',
+      scrollContainerSelector: null,
+      conversationPathPattern: /\/c\//
     },
     'chat.openai.com': {
-      userMessageSelector: '[data-message-author-role="user"]',
-      aiMessageSelector: '[data-message-author-role="assistant"]',
+      messageSelector: '[data-message-author-role="assistant"]',
       contentSelector: '.markdown',
       excludeSelectors: [],
-      titleSelector: 'nav [class*="active"]'
-    },
-    'grok.com': {
-      userMessageSelector: '.items-end .message-bubble',
-      aiMessageSelector: 'div[id^="response-"] .message-bubble',
-      contentSelector: '.markdown',
-      excludeSelectors: [],
-      titleSelector: ''
-    },
-    'doubao.com': {
-      userMessageSelector: 'div[data-testid="send_message"]',
-      aiMessageSelector: 'div[data-testid="receive_message"]',
-      contentSelector: 'div[data-testid="message_text_content"]',
-      excludeSelectors: [],
-      titleSelector: ''
+      titleSelector: 'nav [class*="active"]',
+      messageIdAttr: 'data-message-id',
+      scrollContainerSelector: null,
+      conversationPathPattern: /\/c\//
     }
   };
 
@@ -69,64 +68,19 @@
   if (!SITE_CONFIG) return;
 
   const STORAGE_KEY = 'pinboard_all_dialogues';
-  let allDialogues = {}; // { pathname: { title, pins: { id: {snippet, timestamp, queryText} } } }
+  let allDialogues = {}; // { pathname: { title, pins: { id: {snippet, timestamp, messageIndex} } } }
   let shadowRoot = null;
   let currentPath = window.location.pathname;
   let expandedFolders = new Set();
 
-  // ========== i18n Dictionary ==========
-  const LANG = {
-    zh: {
-      title: '📌 Pinboard',
-      export: '📤 导出',
-      import: '📥 导入',
-      navHint: '其他对话的Pin将在新标签页中打开',
-      emptyTitle: '暂无Pin',
-      emptyHint: '悬停在你的提问上并点击',
-      langBtn: '中 / EN',
-      themeBtn: '🌓 主题',
-      feature3Btn: '📋 解析剪切板文件',
-      feature3Hint: '剪切板中无文件',
-      shortcutToggle: '启用快捷键 (Ctrl+Shift+数字)',
-      formulaLabel: '公式复制格式：',
-      latexRadio: 'LaTeX',
-      mathmlRadio: 'MathML',
-      codeBlockCheck: '独立代码块行',
-    },
-    en: {
-      title: '📌 Pinboard',
-      export: '📤 Export',
-      import: '📥 Import',
-      navHint: 'Pins from other chats open in a new tab',
-      emptyTitle: 'No pins yet',
-      emptyHint: 'Hover over your queries and click',
-      langBtn: '中 / EN',
-      themeBtn: '🌓 Theme',
-      feature3Btn: '📋 Parse Clipboard File',
-      feature3Hint: 'No file in clipboard',
-      shortcutToggle: 'Enable shortcuts (Ctrl+Shift+Num)',
-      formulaLabel: 'Formula copy format:',
-      latexRadio: 'LaTeX',
-      mathmlRadio: 'MathML',
-      codeBlockCheck: 'Standalone code block line',
-    }
-  };
-
-  let currentLang = localStorage.getItem('pinboard_lang') || 'en';
-  // Theme: respect user override in localStorage, otherwise follow system preference
-  let currentTheme = localStorage.getItem('pinboard_theme') ||
-    (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-
-  let shortcutEnabled = localStorage.getItem('pinboard_shortcut_enabled') !== 'false'; // default: enabled
-
-  function t(key) { return LANG[currentLang][key] || key; }
-
   // Get current dialogue title
   function getDialogueTitle() {
+    // 1) Site-specific in-page title element
     try {
       const el = document.querySelector(SITE_CONFIG.titleSelector);
-      if (el && el.textContent.trim()) {
-        return el.textContent.trim().substring(0, 30);
+      if (el) {
+        const t = cleanTitle(el.textContent);
+        if (isMeaningfulTitle(t)) return t.substring(0, 40);
       }
     } catch (e) { }
     // Fallback: use last part of URL or "Untitled"
@@ -134,49 +88,58 @@
     return parts[parts.length - 1]?.substring(0, 12) || 'Untitled';
   }
 
-  // Storage helper - try sync first, fallback to local
-  let useLocalStorage = false;
+  const STORAGE_VERSION = 2;
 
-  async function getStorage() {
-    if (useLocalStorage) return chrome.storage.local;
-    try {
-      // Test if sync is available
-      await chrome.storage.sync.get(null);
-      return chrome.storage.sync;
-    } catch (e) {
-      console.log('Pinboard: Sync unavailable, using local storage');
-      useLocalStorage = true;
-      return chrome.storage.local;
-    }
+  // Load all dialogues from storage (handles legacy unversioned shape)
+  // Infer which site a stored conversation belongs to, from its URL path.
+  // Used to heal pins saved before the per-dialogue `origin` field existed.
+  function inferOrigin(path) {
+    if (/\/chat\//.test(path)) return 'https://claude.ai';
+    if (/\/c\//.test(path)) return 'https://chatgpt.com';
+    if (/\/app\//.test(path)) return 'https://gemini.google.com';
+    return null;
   }
 
-  // Load all dialogues from storage
   async function loadAllDialogues() {
     try {
-      const storage = await getStorage();
-      const result = await storage.get(STORAGE_KEY);
-      allDialogues = result[STORAGE_KEY] || {};
+      const result = await chrome.storage.local.get(STORAGE_KEY);
+      const stored = result[STORAGE_KEY];
+      if (stored && stored.dialogues) {
+        // Versioned shape: { version, dialogues }
+        allDialogues = stored.dialogues || {};
+      } else if (stored && typeof stored === 'object') {
+        // Legacy shape: the value *is* the dialogues map. Migrate on next save.
+        allDialogues = stored;
+      } else {
+        allDialogues = {};
+      }
     } catch (e) {
       console.error('Pinboard: Load failed', e);
       allDialogues = {};
     }
+
+    // One-time migration: backfill `origin` for legacy pins so a cross-site
+    // pin opens on its real host instead of the current tab's origin.
+    let migrated = false;
+    for (const [path, dialogue] of Object.entries(allDialogues)) {
+      if (dialogue && !dialogue.origin) {
+        const inferred = inferOrigin(path);
+        if (inferred) { dialogue.origin = inferred; migrated = true; }
+      }
+    }
+    if (migrated) await saveAllDialogues();
+
     renderSidebar();
   }
 
-  // Save all dialogues to storage
+  // Save all dialogues to storage (versioned shape)
   async function saveAllDialogues() {
     try {
-      const storage = await getStorage();
-      await storage.set({ [STORAGE_KEY]: allDialogues });
+      await chrome.storage.local.set({
+        [STORAGE_KEY]: { version: STORAGE_VERSION, dialogues: allDialogues }
+      });
     } catch (e) {
-      // If sync fails (quota exceeded), fallback to local
-      if (!useLocalStorage) {
-        console.log('Pinboard: Sync save failed, falling back to local');
-        useLocalStorage = true;
-        await chrome.storage.local.set({ [STORAGE_KEY]: allDialogues });
-      } else {
-        console.error('Pinboard: Save failed', e);
-      }
+      console.error('Pinboard: Save failed', e);
     }
   }
 
@@ -185,8 +148,12 @@
     if (!allDialogues[currentPath]) {
       allDialogues[currentPath] = {
         title: getDialogueTitle(),
+        origin: window.location.origin,
         pins: {}
       };
+    } else if (!allDialogues[currentPath].origin) {
+      // Backfill origin for dialogues created before this field existed
+      allDialogues[currentPath].origin = window.location.origin;
     }
     return allDialogues[currentPath];
   }
@@ -194,46 +161,6 @@
   // Get pins for current dialogue
   function getCurrentPins() {
     return getCurrentDialogue().pins;
-  }
-
-  // Find user message by matching query text
-  function findUserMessageByQuery(queryText) {
-    const messages = document.querySelectorAll(SITE_CONFIG.userMessageSelector);
-    for (const msg of messages) {
-      const text = msg.textContent.replace(/\s+/g, ' ').trim();
-      // Match if the stored query is found in the message text
-      if (text.includes(queryText) || queryText.includes(text.substring(0, 100))) {
-        return msg;
-      }
-    }
-    return null;
-  }
-
-  // Find AI message that follows a user message
-  function findFollowingAiMessage(userMessageEl) {
-    const aiMessages = document.querySelectorAll(SITE_CONFIG.aiMessageSelector);
-    const userMessages = document.querySelectorAll(SITE_CONFIG.userMessageSelector);
-
-    // Find the index of this user message
-    let userIndex = -1;
-    userMessages.forEach((el, idx) => {
-      if (el === userMessageEl) userIndex = idx;
-    });
-
-    if (userIndex === -1) return null;
-
-    // Find AI messages that come after this user message in DOM order
-    const userRect = userMessageEl.getBoundingClientRect();
-    for (const aiMsg of aiMessages) {
-      const aiRect = aiMsg.getBoundingClientRect();
-      // AI message should be below user message
-      if (aiRect.top > userRect.top) {
-        return aiMsg;
-      }
-    }
-
-    // Fallback: return the AI message at same index
-    return aiMessages[userIndex] || null;
   }
 
   // Extract clean content
@@ -244,6 +171,74 @@
     }
     const contentEl = clone.querySelector(SITE_CONFIG.contentSelector) || clone;
     return contentEl.textContent.replace(/\s+/g, ' ').trim();
+  }
+
+  // --- Stable message identity (resilient to virtualization / reorder) ---
+
+  // Site-provided stable id, if any (e.g. ChatGPT's data-message-id)
+  function getMessageId(el) {
+    const attr = SITE_CONFIG.messageIdAttr;
+    if (!attr || !el) return null;
+    const own = el.getAttribute(attr);
+    if (own) return own;
+    const anc = el.closest(`[${attr}]`);
+    return anc ? anc.getAttribute(attr) : null;
+  }
+
+  // Content fingerprint: stable across reloads as long as the answer text is unchanged
+  function getContentHash(el) {
+    const text = extractCleanContent(el).slice(0, 300);
+    if (!text) return null;
+    let h = 0;
+    for (let i = 0; i < text.length; i++) {
+      h = (Math.imul(h, 31) + text.charCodeAt(i)) | 0;
+    }
+    return 'h' + (h >>> 0).toString(36) + '_' + text.length;
+  }
+
+  // Does a stored pin record point at this live element?
+  function pinMatchesEl(p, el, index) {
+    if (!el) return false;
+    if (p.messageId) {
+      return getMessageId(el) === p.messageId;
+    }
+    if (p.contentHash) {
+      return getContentHash(el) === p.contentHash;
+    }
+    return typeof p.messageIndex === 'number' && p.messageIndex === index;
+  }
+
+  // Get all assistant-message nodes, trying fallback selectors if the primary
+  // one matches nothing (chat sites rename their data-testids over time).
+  function getMessageNodes() {
+    let nodes = document.querySelectorAll(SITE_CONFIG.messageSelector);
+    if (nodes.length) return Array.from(nodes);
+    for (const sel of (SITE_CONFIG.messageSelectorFallbacks || [])) {
+      nodes = document.querySelectorAll(sel);
+      if (nodes.length) return Array.from(nodes);
+    }
+    return [];
+  }
+
+  // Resolve a stored pin to a currently-mounted element (id -> hash -> index)
+  function resolveMessageEl(pinData) {
+    const messages = getMessageNodes();
+    if (pinData.messageId) {
+      const byId = messages.find(m => getMessageId(m) === pinData.messageId);
+      if (byId) return byId;
+    }
+    if (pinData.contentHash) {
+      const byHash = messages.find(m => getContentHash(m) === pinData.contentHash);
+      if (byHash) return byHash;
+    }
+    if (typeof pinData.messageIndex === 'number' && messages[pinData.messageIndex]) {
+      return messages[pinData.messageIndex];
+    }
+    return null;
+  }
+
+  function delay(ms) {
+    return new Promise(r => setTimeout(r, ms));
   }
 
   // Create sidebar
@@ -294,7 +289,7 @@
           border: 1px solid var(--border-color);
           border-right: none;
           border-radius: 12px 0 0 12px;
-          box-shadow: none;
+          box-shadow: -4px 0 30px rgba(0,0,0,0.5);
           display: flex;
           flex-direction: column;
           font-family: system-ui, -apple-system, sans-serif;
@@ -309,6 +304,8 @@
           opacity: 1;
           pointer-events: auto;
         }
+
+        .sidebar.open { transform: translateY(-50%) translateX(0); box-shadow: -4px 0 30px rgba(0,0,0,0.5); }
 
         .toggle-tab {
           position: fixed;
@@ -565,245 +562,9 @@
           background: rgba(255,255,255,0.1);
           color: #fff;
         }
-
-        /* ===== Expand Trigger & Settings Panel (top-anchored dropdown) ===== */
-        .expand-trigger {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          padding: 8px;
-          border: none;
-          border-top: 1px solid rgba(255,255,255,0.06);
-          background: none;
-          color: var(--text-muted);
-          cursor: pointer;
-          font-size: 14px;
-          transition: all 0.2s;
-          width: 100%;
-          flex-shrink: 0;
-        }
-        .expand-trigger:hover {
-          background: var(--hover-bg);
-          color: var(--text-color);
-        }
-        .expand-trigger.active { color: #d97706; }
-
-        .expand-icon {
-          display: inline-block;
-          transition: transform 0.3s ease;
-        }
-        .expand-trigger.active .expand-icon {
-          transform: rotate(180deg);
-        }
-
-        .settings-panel {
-          max-height: 0;
-          overflow: hidden;
-          transition: max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-        .settings-panel.open {
-          max-height: 500px;
-        }
-
-        /* ===== Light Theme Element Overrides ===== */
-        #pinboard-container.light-theme .toggle-tab:hover {
-          background: rgba(230, 230, 235, 0.98);
-        }
-        #pinboard-container.light-theme .sidebar.open {
-          box-shadow: -4px 0 30px rgba(0,0,0,0.15);
-        }
-        #pinboard-container.light-theme .header {
-          border-bottom-color: var(--border-color);
-        }
-        #pinboard-container.light-theme .expand-trigger { border-top-color: var(--border-color); }
-        #pinboard-container.light-theme .close-btn { color: #999; }
-        #pinboard-container.light-theme .close-btn:hover { background: rgba(0,0,0,0.08); color: #000; }
-        #pinboard-container.light-theme .folder-header:hover { background: var(--hover-bg); }
-        #pinboard-container.light-theme .folder-icon { color: #999; }
-        #pinboard-container.light-theme .folder-title { color: #444; }
-        #pinboard-container.light-theme .folder.current { background: rgba(217,119,6,0.06); border-color: rgba(217,119,6,0.15); }
-        #pinboard-container.light-theme .folder.current .folder-title { color: #b45309; }
-        #pinboard-container.light-theme .folder-count { background: rgba(0,0,0,0.06); color: #666; }
-        #pinboard-container.light-theme .folder.current .folder-count { background: rgba(217,119,6,0.15); color: #b45309; }
-        #pinboard-container.light-theme .folder-delete { color: #aaa; }
-        #pinboard-container.light-theme .pin-card { background: var(--card-bg); border-color: rgba(0,0,0,0.08); }
-        #pinboard-container.light-theme .pin-card:hover { background: rgba(217,119,6,0.08); border-color: rgba(217,119,6,0.25); }
-        #pinboard-container.light-theme .pin-snippet { color: var(--text-secondary); }
-        #pinboard-container.light-theme .pin-meta { color: var(--text-muted); }
-        #pinboard-container.light-theme .delete-btn { color: #aaa; }
-        #pinboard-container.light-theme .nav-hint { color: var(--text-muted); border-top-color: var(--border-color); }
-        #pinboard-container.light-theme .footer-actions { border-top-color: var(--border-color); }
-        #pinboard-container.light-theme .footer-btn { background: var(--btn-bg); border-color: var(--border-color); color: #666; }
-        #pinboard-container.light-theme .footer-btn:hover { background: rgba(0,0,0,0.1); color: #000; }
-        #pinboard-container.light-theme .empty { color: var(--text-muted); }
-        #pinboard-container.light-theme .folders-list::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); }
-
-        /* ===== Settings Bar ===== */
-        .settings-bar {
-          display: flex;
-          gap: 8px;
-          padding: 8px 12px;
-          border-top: 1px solid rgba(255,255,255,0.06);
-        }
-        #pinboard-container.light-theme .settings-bar { border-top-color: var(--border-color); }
-
-        .settings-btn {
-          flex: 1;
-          background: var(--btn-bg);
-          border: 1px solid var(--border-color);
-          color: var(--text-muted);
-          font-size: 11px;
-          padding: 6px 10px;
-          border-radius: 6px;
-          cursor: pointer;
-          transition: all 0.15s;
-        }
-        .settings-btn:hover {
-          background: var(--hover-bg);
-          color: var(--text-color);
-        }
-
-        /* ===== Feature Sections ===== */
-        .feature-section {
-          padding: 8px 12px;
-          border-top: 1px solid rgba(255,255,255,0.06);
-          font-size: 12px;
-          color: var(--text-secondary);
-        }
-        #pinboard-container.light-theme .feature-section { border-top-color: var(--border-color); }
-
-        .feature-btn {
-          display: block;
-          width: 100%;
-          background: rgba(59,130,246,0.12);
-          border: 1px solid rgba(59,130,246,0.25);
-          color: #60a5fa;
-          font-size: 11px;
-          padding: 7px 10px;
-          border-radius: 6px;
-          cursor: pointer;
-          transition: all 0.15s;
-          text-align: left;
-        }
-        .feature-btn:hover {
-          background: rgba(59,130,246,0.2);
-          border-color: rgba(59,130,246,0.4);
-        }
-        #pinboard-container.light-theme .feature-btn { background: rgba(59,130,246,0.08); color: #2563eb; border-color: rgba(59,130,246,0.2); }
-        #pinboard-container.light-theme .feature-btn:hover { background: rgba(59,130,246,0.15); }
-
-        .feature-hint {
-          display: block;
-          margin-top: 5px;
-          font-size: 10px;
-          color: #666;
-        }
-        #pinboard-container.light-theme .feature-hint { color: #999; }
-
-        .feature-label {
-          font-size: 12px;
-          color: var(--text-secondary);
-          margin-bottom: 6px;
-          display: block;
-        }
-
-        .radio-group {
-          display: flex;
-          align-items: center;
-          gap: 14px;
-          margin: 6px 0;
-        }
-
-        .radio-label, .checkbox-label {
-          display: inline-flex;
-          align-items: center;
-          gap: 4px;
-          font-size: 11px;
-          color: var(--text-muted);
-          cursor: pointer;
-          user-select: none;
-        }
-
-        .checkbox-row { margin-top: 6px; }
-
-        .radio-label input[type="radio"],
-        .checkbox-label input[type="checkbox"] {
-          accent-color: #d97706;
-          margin: 0;
-          cursor: pointer;
-        }
-
-        /* ===== Toggle Switch ===== */
-        .toggle-switch-row {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          margin-top: 8px;
-        }
-
-        .toggle-switch {
-          position: relative;
-          width: 34px;
-          height: 18px;
-          flex-shrink: 0;
-        }
-
-        .toggle-switch input {
-          opacity: 0;
-          width: 0;
-          height: 0;
-        }
-
-        .toggle-slider {
-          position: absolute;
-          inset: 0;
-          background: rgba(255,255,255,0.12);
-          border-radius: 9px;
-          cursor: pointer;
-          transition: background 0.2s;
-        }
-
-        .toggle-slider::before {
-          content: '';
-          position: absolute;
-          width: 14px;
-          height: 14px;
-          left: 2px;
-          bottom: 2px;
-          background: #888;
-          border-radius: 50%;
-          transition: transform 0.2s, background 0.2s;
-        }
-
-        .toggle-switch input:checked + .toggle-slider {
-          background: rgba(217,119,6,0.35);
-        }
-
-        .toggle-switch input:checked + .toggle-slider::before {
-          transform: translateX(16px);
-          background: #d97706;
-        }
-
-        #pinboard-container.light-theme .toggle-slider {
-          background: rgba(0,0,0,0.1);
-        }
-        #pinboard-container.light-theme .toggle-slider::before {
-          background: #aaa;
-        }
-        #pinboard-container.light-theme .toggle-switch input:checked + .toggle-slider {
-          background: rgba(217,119,6,0.25);
-        }
-        #pinboard-container.light-theme .toggle-switch input:checked + .toggle-slider::before {
-          background: #b45309;
-        }
-
-        .toggle-switch-label {
-          font-size: 11px;
-          color: var(--text-muted);
-          user-select: none;
-          cursor: pointer;
-        }
       </style>
+
+      <div class="toast" id="toast"></div>
 
       <div id="pinboard-container">
         <div class="toggle-tab" id="toggle">
@@ -811,54 +572,18 @@
           <span class="count" id="count">0</span>
         </div>
 
-        <div class="sidebar" id="sidebar">
-          <div class="header">
-            <span class="title" data-i18n="title">📌 Pinboard</span>
-            <button class="close-btn" id="close">×</button>
-          </div>
-          <div class="folders-list" id="folders"></div>
-          <div class="nav-hint" data-i18n="navHint">Pins from other chats open in a new tab</div>
-
-          <button class="expand-trigger" id="expand-trigger" title="Settings">
-            <span class="expand-icon">▼</span>
-          </button>
-
-          <div class="settings-panel" id="settings-panel">
-            <div class="footer-actions">
-              <button class="footer-btn" id="export-btn" data-i18n="export">📤 Export</button>
-              <button class="footer-btn" id="import-btn" data-i18n="import">📥 Import</button>
-            </div>
-            <input type="file" id="import-file" accept=".json" style="display:none;">
-
-            <div class="settings-bar">
-              <button class="settings-btn" id="lang-btn" data-i18n="langBtn">中 / EN</button>
-              <button class="settings-btn" id="theme-btn" data-i18n="themeBtn">🌓 Theme</button>
-            </div>
-
-            <div class="feature-section" id="feature3">
-              <span class="feature-label" data-i18n="feature3Btn">📋 Parse Clipboard File</span>
-              <span class="feature-hint" id="clipboard-hint" data-i18n="feature3Hint">No file in clipboard</span>
-              <div class="toggle-switch-row">
-                <label class="toggle-switch">
-                  <input type="checkbox" id="shortcut-toggle" checked>
-                  <span class="toggle-slider"></span>
-                </label>
-                <span class="toggle-switch-label" data-i18n="shortcutToggle">Enable shortcuts (Ctrl+Shift+Num)</span>
-              </div>
-            </div>
-
-            <div class="feature-section" id="feature4">
-              <span class="feature-label" data-i18n="formulaLabel">Formula copy format:</span>
-              <div class="radio-group">
-                <label class="radio-label"><input type="radio" name="formula-format" value="latex" checked> <span data-i18n="latexRadio">LaTeX</span></label>
-                <label class="radio-label"><input type="radio" name="formula-format" value="mathml"> <span data-i18n="mathmlRadio">MathML</span></label>
-              </div>
-              <div class="checkbox-row">
-                <label class="checkbox-label"><input type="checkbox" id="code-block-check"> <span data-i18n="codeBlockCheck">Standalone code block line</span></label>
-              </div>
-            </div>
-          </div>
+      <div class="sidebar" id="sidebar">
+        <div class="header">
+          <span class="title">📌 Pinboard</span>
+          <button class="close-btn" id="close">×</button>
         </div>
+        <div class="folders-list" id="folders"></div>
+        <div class="nav-hint">Pins from other chats open in a new tab</div>
+        <div class="footer-actions">
+          <button class="footer-btn" id="export-btn">📤 Export</button>
+          <button class="footer-btn" id="import-btn">📥 Import</button>
+        </div>
+        <input type="file" id="import-file" accept=".json" style="display:none;">
       </div>
     `;
 
@@ -932,71 +657,6 @@
       // Reset file input
       importFile.value = '';
     });
-
-    // ===== Language Toggle =====
-    shadowRoot.getElementById('lang-btn').addEventListener('click', () => {
-      currentLang = currentLang === 'zh' ? 'en' : 'zh';
-      localStorage.setItem('pinboard_lang', currentLang);
-      applyLanguage();
-    });
-
-    // ===== Theme Toggle =====
-    shadowRoot.getElementById('theme-btn').addEventListener('click', () => {
-      currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
-      localStorage.setItem('pinboard_theme', currentTheme); // persist only on manual toggle
-      applyTheme();
-    });
-
-    // ===== Shortcut Toggle =====
-    const shortcutToggleEl = shadowRoot.getElementById('shortcut-toggle');
-    shortcutToggleEl.checked = shortcutEnabled;
-    shortcutToggleEl.addEventListener('change', () => {
-      shortcutEnabled = shortcutToggleEl.checked;
-      localStorage.setItem('pinboard_shortcut_enabled', shortcutEnabled);
-      console.log(`Pinboard: Shortcuts ${shortcutEnabled ? 'enabled' : 'disabled'}`);
-    });
-
-    // ===== Ctrl + Shift + Number Keyboard Shortcut =====
-    document.addEventListener('keydown', (e) => {
-      if (!shortcutEnabled) return;
-      if (e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey) {
-        // Use e.code for reliable detection (e.key may return '!' for Shift+1, etc.)
-        const match = e.code.match(/^Digit(\d)$/);
-        if (match) {
-          const num = parseInt(match[1], 10);
-          if (num >= 1 && num <= 9) {
-            e.preventDefault();
-            const index = num - 1; // Ctrl+Shift+1 → index 0 (newest), +2 → index 1, etc.
-            console.log('读取历史剪切板，顺位：', index);
-            // TODO: trigger clipboard parse for history index
-          }
-        }
-      }
-    });
-  }
-
-  // ===== Apply Language =====
-  function applyLanguage() {
-    if (!shadowRoot) return;
-    shadowRoot.querySelectorAll('[data-i18n]').forEach(el => {
-      const key = el.getAttribute('data-i18n');
-      if (LANG[currentLang][key] !== undefined) {
-        el.textContent = LANG[currentLang][key];
-      }
-    });
-    renderSidebar(); // re-render dynamic content with current language
-  }
-
-  // ===== Apply Theme =====
-  function applyTheme() {
-    if (!shadowRoot) return;
-    const container = shadowRoot.getElementById('pinboard-container');
-    if (!container) return;
-    if (currentTheme === 'light') {
-      container.classList.add('light-theme');
-    } else {
-      container.classList.remove('light-theme');
-    }
   }
 
   // Render sidebar with folders
@@ -1027,8 +687,8 @@
     if (dialoguesWithPins.length === 0) {
       foldersEl.innerHTML = `
         <div class="empty">
-          ${t('emptyTitle')}<br>
-          ${t('emptyHint')}
+          No pins yet<br>
+          Hover over your queries and click 📌
         </div>
       `;
       return;
@@ -1037,7 +697,8 @@
     foldersEl.innerHTML = '';
 
     for (const [path, dialogue] of dialoguesWithPins) {
-      const isCurrent = path === currentPath;
+      const sameOrigin = !dialogue.origin || dialogue.origin === window.location.origin;
+      const isCurrent = path === currentPath && sameOrigin;
       const isExpanded = expandedFolders.has(path);
       const pins = Object.entries(dialogue.pins || {});
 
@@ -1075,7 +736,7 @@
       pinsContainer.className = 'folder-pins';
 
       // Sort pins by message index
-      pins.sort((a, b) => a[1].timestamp - b[1].timestamp);
+      pins.sort((a, b) => a[1].messageIndex - b[1].messageIndex);
 
       for (const [pinId, pinData] of pins) {
         const card = document.createElement('div');
@@ -1092,11 +753,14 @@
           if (e.target.classList.contains('delete-btn')) {
             deletePin(path, pinId);
           } else if (isCurrent) {
-            jumpToMessage(pinData.queryText);
+            jumpToMessage(pinData);
           } else {
-            // Open in new tab with hash to auto-scroll
-            const hash = encodeURIComponent(pinData.queryText);
-            window.open(window.location.origin + path + '#pinboard=' + hash, '_blank');
+            // Open the other conversation in a new tab, deep-linked to the pin.
+            // Use the dialogue's own origin so a ChatGPT pin opened from a Claude
+            // tab points at chatgpt.com, not the current site.
+            const origin = dialogue.origin || window.location.origin;
+            const url = origin + path + '#pinboard=' + encodeURIComponent(pinId);
+            window.open(url, '_blank');
           }
         });
 
@@ -1115,13 +779,11 @@
   function updatePinButtonStates() {
     const currentPins = getCurrentPins();
     document.querySelectorAll('[data-pinboard-idx]').forEach(el => {
-      // Button container is now a sibling after the message
-      const btnContainer = el.nextElementSibling;
-      const btn = btnContainer?.querySelector('.pinboard-btn');
+      const idx = parseInt(el.getAttribute('data-pinboard-idx'), 10);
+      const btn = el.querySelector('.pinboard-btn');
       if (!btn) return;
 
-      const queryText = el.textContent.replace(/\s+/g, ' ').trim().substring(0, 150);
-      const isPinned = Object.values(currentPins).some(p => p.queryText === queryText);
+      const isPinned = Object.values(currentPins).some(p => pinMatchesEl(p, el, idx));
       if (isPinned) {
         btn.style.opacity = '1';
         btn.style.background = 'rgba(217,119,6,0.35)';
@@ -1158,93 +820,62 @@
     }
   }
 
-  // Jump to user query - position near top of viewport
-  function jumpToMessage(queryText) {
-    const el = findUserMessageByQuery(queryText);
-    if (!el) {
-      // Remove orphan pin
-      const pins = getCurrentPins();
-      for (const [id, data] of Object.entries(pins)) {
-        if (data.queryText === queryText) {
-          delete pins[id];
-        }
-      }
-      saveAllDialogues();
-      renderSidebar();
-      return;
+  // Find the scrollable conversation container
+  function getScrollContainer(el) {
+    if (SITE_CONFIG.scrollContainerSelector) {
+      const c = document.querySelector(SITE_CONFIG.scrollContainerSelector);
+      if (c) return c;
     }
+    if (el) {
+      const c = el.closest('[class*="overflow-y"], [class*="scroll"]');
+      if (c) return c;
+    }
+    return document.querySelector('main') || document.scrollingElement || document.documentElement;
+  }
 
-    // Scroll element to top of viewport
+  // Scroll to the START of a resolved message + briefly highlight it.
+  // scrollMarginTop keeps the top from sitting flush under a sticky site header.
+  function revealElement(el) {
+    el.style.scrollMarginTop = '80px';
     el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    el.style.outline = '2px solid #d97706';
+    el.style.outlineOffset = '4px';
+    el.style.transition = 'outline 0.3s';
+    setTimeout(() => { el.style.outline = 'none'; }, 2500);
+  }
 
-    // Create integrated highlight frame around both query and answer
-    const aiMessage = findFollowingAiMessage(el);
+  // Jump to a pinned message. Resolves by stable id/hash/index and, if the
+  // target is virtualized (not currently mounted), scrolls the conversation
+  // until it appears. Never deletes a pin just because it is off-screen.
+  async function jumpToMessage(pinData) {
+    let el = resolveMessageEl(pinData);
+    if (el) { revealElement(el); return; }
 
-    // Calculate bounding box that covers both elements
-    const queryRect = el.getBoundingClientRect();
-    let top = queryRect.top;
-    let bottom = queryRect.bottom;
-    let left = queryRect.left;
-    let right = queryRect.right;
+    // Target not mounted — likely virtualized (common on ChatGPT). Walk the
+    // conversation from the top, forcing rows to mount until we find it.
+    const container = getScrollContainer(null);
+    const step = () => Math.max(200, (container.clientHeight || window.innerHeight) * 0.8);
 
-    if (aiMessage) {
-      const aiRect = aiMessage.getBoundingClientRect();
-      top = Math.min(top, aiRect.top);
-      bottom = Math.max(bottom, aiRect.bottom);
-      left = Math.min(left, aiRect.left);
-      right = Math.max(right, aiRect.right);
+    try { container.scrollTo({ top: 0 }); } catch (_) { window.scrollTo(0, 0); }
+    await delay(150);
+
+    let lastTop = -1;
+    for (let i = 0; i < 60; i++) {
+      el = resolveMessageEl(pinData);
+      if (el) { revealElement(el); return; }
+
+      const before = container.scrollTop != null ? container.scrollTop : window.scrollY;
+      try { container.scrollBy({ top: step() }); } catch (_) { window.scrollBy(0, step()); }
+      await delay(90);
+
+      const after = container.scrollTop != null ? container.scrollTop : window.scrollY;
+      if (after === before && after === lastTop) break; // reached the bottom, can't scroll further
+      lastTop = before;
     }
 
-    // Create overlay frame
-    const overlay = document.createElement('div');
-    overlay.className = 'pinboard-highlight-overlay';
-    overlay.style.cssText = `
-      position: fixed;
-      top: ${top - 8}px;
-      left: ${left - 8}px;
-      width: ${right - left + 16}px;
-      height: ${bottom - top + 16}px;
-      border: 2px solid #d97706;
-      border-radius: 12px;
-      pointer-events: none;
-      z-index: 10000;
-      box-shadow: 0 0 20px rgba(217, 119, 6, 0.3);
-      transition: opacity 0.3s;
-    `;
-    document.body.appendChild(overlay);
-
-    // Update overlay position on scroll
-    const updatePosition = () => {
-      const newQueryRect = el.getBoundingClientRect();
-      let newTop = newQueryRect.top;
-      let newBottom = newQueryRect.bottom;
-      let newLeft = newQueryRect.left;
-      let newRight = newQueryRect.right;
-
-      if (aiMessage) {
-        const newAiRect = aiMessage.getBoundingClientRect();
-        newTop = Math.min(newTop, newAiRect.top);
-        newBottom = Math.max(newBottom, newAiRect.bottom);
-        newLeft = Math.min(newLeft, newAiRect.left);
-        newRight = Math.max(newRight, newAiRect.right);
-      }
-
-      overlay.style.top = `${newTop - 8}px`;
-      overlay.style.left = `${newLeft - 8}px`;
-      overlay.style.width = `${newRight - newLeft + 16}px`;
-      overlay.style.height = `${newBottom - newTop + 16}px`;
-    };
-
-    window.addEventListener('scroll', updatePosition, true);
-
-    // Remove overlay after delay
-    setTimeout(() => {
-      overlay.style.opacity = '0';
-      setTimeout(() => {
-        overlay.remove();
-        window.removeEventListener('scroll', updatePosition, true);
-      }, 300);
-    }, 2500);
+    el = resolveMessageEl(pinData);
+    if (el) { revealElement(el); }
+    else { showToast('Pinned message not found in this conversation'); }
   }
 
   // Add pin button to message
@@ -1253,25 +884,23 @@
     messageEl.setAttribute('data-pinboard-idx', index);
 
     const btnContainer = document.createElement('div');
-    btnContainer.className = 'pinboard-btn-container';
-    btnContainer.style.cssText = 'display:flex;justify-content:flex-end;padding:2px 0;width:100%;';
+    btnContainer.style.cssText = 'position:absolute;top:8px;right:8px;z-index:1000;';
 
     const btn = document.createElement('button');
     btn.className = 'pinboard-btn';
     btn.innerHTML = '📌';
-    btn.title = 'Pin this query';
+    btn.title = 'Pin this message';
     btn.style.cssText = `
-      width: 28px; height: 28px; padding: 0;
+      width: 30px; height: 30px; padding: 0;
       background: rgba(30,30,35,0.85);
       border: 1px solid rgba(255,255,255,0.15);
-      border-radius: 6px; cursor: pointer; font-size: 13px;
+      border-radius: 6px; cursor: pointer; font-size: 14px;
       opacity: 0; transition: opacity 0.15s, transform 0.15s, background 0.15s;
       display: flex; align-items: center; justify-content: center;
     `;
 
     const currentPins = getCurrentPins();
-    const initialQueryText = messageEl.textContent.replace(/\s+/g, ' ').trim().substring(0, 150);
-    const isPinned = Object.values(currentPins).some(p => p.queryText === initialQueryText);
+    const isPinned = Object.values(currentPins).some(p => pinMatchesEl(p, messageEl, index));
     if (isPinned) {
       btn.style.opacity = '1';
       btn.style.background = 'rgba(217,119,6,0.35)';
@@ -1282,8 +911,7 @@
       e.stopPropagation();
 
       const pins = getCurrentPins();
-      const currentQueryText = messageEl.textContent.replace(/\s+/g, ' ').trim().substring(0, 150);
-      const existingPin = Object.entries(pins).find(([_, p]) => p.queryText === currentQueryText);
+      const existingPin = Object.entries(pins).find(([_, p]) => pinMatchesEl(p, messageEl, index));
 
       if (existingPin) {
         delete pins[existingPin[0]];
@@ -1293,20 +921,14 @@
           delete allDialogues[currentPath];
         }
       } else {
-        // Store the user's query text for matching
-        const queryText = messageEl.textContent.replace(/\s+/g, ' ').trim().substring(0, 150);
-
-        // Get snippet from the following AI response
-        const aiMessage = findFollowingAiMessage(messageEl);
-        let snippet = 'No AI response found';
-        if (aiMessage) {
-          const text = extractCleanContent(aiMessage);
-          snippet = text.substring(0, 50) + (text.length > 50 ? '...' : '');
-        }
+        const text = extractCleanContent(messageEl);
+        const snippet = text.substring(0, 50) + (text.length > 50 ? '...' : '');
         pins[`pin_${Date.now()}`] = {
           snippet,
           timestamp: Date.now(),
-          queryText
+          messageIndex: index,
+          messageId: getMessageId(messageEl),
+          contentHash: getContentHash(messageEl)
         };
         // Update title
         getCurrentDialogue().title = getDialogueTitle();
@@ -1323,42 +945,59 @@
 
     btnContainer.appendChild(btn);
 
-    // Insert button container after the user message (between query and answer)
-    messageEl.parentNode.insertBefore(btnContainer, messageEl.nextSibling);
+    const computed = window.getComputedStyle(messageEl);
+    if (computed.position === 'static') messageEl.style.position = 'relative';
+    messageEl.appendChild(btnContainer);
 
-    // Show button on hover of either the message or the button container area
-    const showBtn = () => btn.style.opacity = '1';
-    const hideBtn = () => {
+    messageEl.addEventListener('mouseenter', () => btn.style.opacity = '1');
+    messageEl.addEventListener('mouseleave', () => {
       const pins = getCurrentPins();
-      const qText = messageEl.textContent.replace(/\s+/g, ' ').trim().substring(0, 150);
-      const stillPinned = Object.values(pins).some(p => p.queryText === qText);
+      const stillPinned = Object.values(pins).some(p => pinMatchesEl(p, messageEl, index));
       if (!stillPinned) btn.style.opacity = '0';
-    };
-
-    messageEl.addEventListener('mouseenter', showBtn);
-    messageEl.addEventListener('mouseleave', hideBtn);
-    btnContainer.addEventListener('mouseenter', showBtn);
-    btnContainer.addEventListener('mouseleave', hideBtn);
+    });
   }
 
-  // Process user messages to add pin buttons
+  // Process messages
   function processMessages() {
     try {
-      const messages = document.querySelectorAll(SITE_CONFIG.userMessageSelector);
+      const messages = getMessageNodes();
       messages.forEach((msg, idx) => addPinButton(msg, idx));
     } catch (e) {
       console.error('Pinboard: Process error', e);
     }
   }
 
+  function isConversationPath(path) {
+    const pat = SITE_CONFIG.conversationPathPattern;
+    return pat ? pat.test(path) : true;
+  }
+
   // Check URL changes
   function checkUrlChange() {
-    if (window.location.pathname !== currentPath) {
-      currentPath = window.location.pathname;
-      expandedFolders.add(currentPath); // Auto-expand new dialogue
-      renderSidebar();
-      setTimeout(processMessages, 500);
+    const newPath = window.location.pathname;
+    if (newPath === currentPath) return;
+
+    const oldPath = currentPath;
+
+    // Rekey a fresh chat: pins made on a transient path (e.g. "/" or "/new")
+    // before the conversation id settles should follow it to the real URL.
+    const oldDialogue = allDialogues[oldPath];
+    const oldHasPins = oldDialogue && Object.keys(oldDialogue.pins || {}).length > 0;
+    if (oldHasPins && isConversationPath(newPath) && !isConversationPath(oldPath) && !allDialogues[newPath]) {
+      allDialogues[newPath] = oldDialogue;
+      allDialogues[newPath].title = getDialogueTitle();
+      delete allDialogues[oldPath];
+      if (expandedFolders.has(oldPath)) {
+        expandedFolders.delete(oldPath);
+        expandedFolders.add(newPath);
+      }
+      saveAllDialogues();
     }
+
+    currentPath = newPath;
+    expandedFolders.add(currentPath); // Auto-expand new dialogue
+    renderSidebar();
+    setTimeout(processMessages, 500);
   }
 
   // Setup observer
@@ -1371,7 +1010,16 @@
       }, 300);
     });
     observer.observe(document.body, { childList: true, subtree: true });
-    setInterval(checkUrlChange, 1000);
+
+    // Detect SPA navigations via the History API instead of polling.
+    const fire = () => setTimeout(checkUrlChange, 0);
+    const origPush = history.pushState;
+    const origReplace = history.replaceState;
+    history.pushState = function (...args) { const r = origPush.apply(this, args); fire(); return r; };
+    history.replaceState = function (...args) { const r = origReplace.apply(this, args); fire(); return r; };
+    window.addEventListener('popstate', fire);
+    // Light safety-net poll in case a navigation slips through.
+    setInterval(checkUrlChange, 2000);
   }
 
   // Utilities
@@ -1389,26 +1037,34 @@
     return `${Math.floor(sec / 86400)}d ago`;
   }
 
-  // Check for pinboard hash and scroll to pinned query
-  function checkHashAndScroll() {
-    const hash = window.location.hash;
-    if (hash.startsWith('#pinboard=')) {
-      const queryText = decodeURIComponent(hash.substring('#pinboard='.length));
-      // Retry a few times as messages may still be loading
-      let attempts = 0;
-      const tryScroll = () => {
-        const el = findUserMessageByQuery(queryText);
-        if (el) {
-          jumpToMessage(queryText);
-          // Clean up hash
-          history.replaceState(null, '', window.location.pathname + window.location.search);
-        } else if (attempts < 10) {
-          attempts++;
-          setTimeout(tryScroll, 500);
-        }
-      };
-      tryScroll();
-    }
+  let _toastTimer = null;
+  function showToast(message) {
+    if (!shadowRoot) return;
+    const el = shadowRoot.getElementById('toast');
+    if (!el) return;
+    el.textContent = message;
+    el.classList.add('show');
+    clearTimeout(_toastTimer);
+    _toastTimer = setTimeout(() => el.classList.remove('show'), 3000);
+  }
+
+  // Deep link support: open a conversation with #pinboard=<pinId> and auto-jump.
+  function maybeJumpFromHash() {
+    const m = window.location.hash.match(/pinboard=([^&]+)/);
+    if (!m) return;
+    const pinId = decodeURIComponent(m[1]);
+    let tries = 0;
+    const attempt = () => {
+      const pinData = getCurrentPins()[pinId];
+      if (pinData) {
+        jumpToMessage(pinData);
+        // Clear the hash so a manual refresh doesn't re-trigger the jump
+        history.replaceState(null, '', window.location.pathname + window.location.search);
+        return;
+      }
+      if (tries++ < 12) setTimeout(attempt, 400);
+    };
+    setTimeout(attempt, 600);
   }
 
   // Initialize
@@ -1422,7 +1078,7 @@
     setTimeout(() => {
       processMessages();
       setupObserver();
-      checkHashAndScroll();
+      maybeJumpFromHash();
     }, 800);
 
     console.log('Pinboard: Ready with multi-dialogue support');
