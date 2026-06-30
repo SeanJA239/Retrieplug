@@ -73,6 +73,47 @@
   let currentPath = window.location.pathname;
   let expandedFolders = new Set();
 
+  // Theme: respect user override in localStorage, otherwise follow system preference
+  let currentTheme = localStorage.getItem('pinboard_theme') ||
+    (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+
+  const GENERIC_TITLES = new Set([
+    'chatgpt', 'chat gpt', 'claude', 'gemini', 'grok', 'doubao',
+    'google gemini', 'new chat', 'new conversation', 'conversation',
+    'chat', 'untitled', 'claude.ai'
+  ]);
+
+  function cleanTitle(text) {
+    return (text || '')
+      .replace(/\s+/g, ' ')
+      .replace(/\s*[-|·•]\s*(chatgpt|claude|gemini|grok|doubao)[^]*$/i, '')
+      .trim();
+  }
+
+  function isMeaningfulTitle(text) {
+    const title = cleanTitle(text);
+    if (!title || title.length < 3) return false;
+    if (GENERIC_TITLES.has(title.toLowerCase())) return false;
+    if (/^[a-f0-9-]{8,}$/i.test(title)) return false;
+    return true;
+  }
+
+  function applyTheme() {
+    if (!shadowRoot) return;
+    const container = shadowRoot.getElementById('pinboard-container');
+    if (!container) return;
+    if (currentTheme === 'light') {
+      container.classList.add('light-theme');
+    } else {
+      container.classList.remove('light-theme');
+    }
+  }
+
+  function applyLanguage() {
+    // No-op: i18n strings are hardcoded in this version
+  }
+
+
   // Get current dialogue title
   function getDialogueTitle() {
     // 1) Site-specific in-page title element
@@ -598,14 +639,6 @@
     shadowRoot.getElementById('close').addEventListener('click', () => {
       shadowRoot.getElementById('sidebar').classList.remove('open');
       shadowRoot.getElementById('toggle').classList.remove('hidden');
-    });
-
-    // ===== Expand Trigger Toggle =====
-    const expandTrigger = shadowRoot.getElementById('expand-trigger');
-    const settingsPanel = shadowRoot.getElementById('settings-panel');
-    expandTrigger.addEventListener('click', () => {
-      const isOpen = settingsPanel.classList.toggle('open');
-      expandTrigger.classList.toggle('active', isOpen);
     });
 
     // Export pins to JSON file
